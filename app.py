@@ -10,6 +10,9 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 
+# In-memory store for mobile session tokens (in production, use Redis or database)
+mobile_tokens = {}
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///billsplit.db"
@@ -141,10 +144,14 @@ def get_current_user():
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
-        token_key = f"mobile_token_{token}"
-        if token_key in session:
-            user_id = session[token_key]
+        print(f"Mobile token validation: {token}")
+        print(f"Available tokens: {list(mobile_tokens.keys())}")
+        if token in mobile_tokens:
+            user_id = mobile_tokens[token]
+            print(f"Token valid, user_id: {user_id}")
             return User.query.get(user_id)
+        else:
+            print("Token not found in mobile_tokens")
 
     return None
 
@@ -344,7 +351,9 @@ def auth_google_callback():
             import secrets
 
             session_token = secrets.token_urlsafe(32)
-            session[f"mobile_token_{session_token}"] = user.id
+            mobile_tokens[session_token] = user.id
+            print(f"Generated mobile token: {session_token} for user: {user.id}")
+            print(f"Mobile tokens store: {mobile_tokens}")
             return redirect(
                 f"billsplit://success?session_token={session_token}&user_id={user.id}"
             )
