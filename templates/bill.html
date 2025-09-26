@@ -1,0 +1,112 @@
+{% extends "base.html" %} {% block title %}{{ bill.title }} - Bill Split{%
+endblock %} {% block content %}
+<div style="margin-bottom: 20px">
+    <h2>{{ bill.title }}</h2>
+    {% if bill.description %}
+    <p>{{ bill.description }}</p>
+    {% endif %}
+
+    <div class="bill-breakdown">
+        <p><strong>Subtotal: ${{ "%.2f"|format(bill.subtotal) }}</strong></p>
+        {% if bill.tax_amount > 0 %}
+        <p>Tax: ${{ "%.2f"|format(bill.tax_amount) }}</p>
+        {% endif %} {% if bill.tip_amount > 0 %}
+        <p>Tip: ${{ "%.2f"|format(bill.tip_amount) }}</p>
+        {% endif %}
+        <p><strong>Total: ${{ "%.2f"|format(bill.total_amount) }}</strong></p>
+        <p><em>Split Method: {{ bill.split_method.title() }}</em></p>
+    </div>
+
+    <small>Created {{ bill.created_at.strftime('%B %d, %Y') }}</small>
+</div>
+
+{% if bill.items %}
+<h3>Items</h3>
+{% for item in bill.items %}
+<div class="card">
+    <div
+        style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        "
+    >
+        <div>
+            <strong>{{ item.name }}</strong>
+            {% if item.quantity > 1 %}
+            <span>({{ item.quantity }}x)</span>
+            {% endif %} {% if item.is_shared %}
+            <span style="color: #007bff">[Shared]</span>
+            {% endif %}
+        </div>
+        <div>
+            <strong>${{ "%.2f"|format(item.price * item.quantity) }}</strong>
+        </div>
+    </div>
+</div>
+{% endfor %} {% endif %}
+
+<h3>Participants</h3>
+{% for participant, participant_user in participants %}
+<div class="card">
+    <div
+        style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        "
+    >
+        <div class="user-info">
+            {% if participant_user.profile_picture %}
+            <img
+                src="{{ participant_user.profile_picture }}"
+                alt="{{ participant_user.name }}"
+            />
+            {% endif %}
+            <span>{{ participant_user.name }}</span>
+        </div>
+        <div>
+            <strong>${{ "%.2f"|format(participant.amount_owed) }}</strong>
+            {% if participant.paid %}
+            <span style="color: #28a745; margin-left: 10px">✓ Paid</span>
+            {% else %} {% if participant_user.id == user.id %}
+            <button
+                onclick="markPaid('{{ bill.id }}')"
+                class="btn"
+                style="margin-left: 10px"
+            >
+                Mark as Paid
+            </button>
+            {% else %}
+            <span style="color: #dc3545; margin-left: 10px">Unpaid</span>
+            {% endif %} {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div style="margin-top: 20px">
+    <a href="/groups/{{ bill.group_id }}" class="btn btn-secondary"
+        >Back to Group</a
+    >
+</div>
+
+<script>
+    function markPaid(billId) {
+        fetch("/bills/" + billId + "/mark_paid", {
+            method: "POST",
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert("Error: " + data.error);
+                }
+            })
+            .catch((error) => {
+                alert("An error occurred");
+            });
+    }
+</script>
+{% endblock %}

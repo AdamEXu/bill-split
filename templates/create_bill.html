@@ -1,0 +1,229 @@
+{% extends "base.html" %} {% block title %}Create Bill - {{ group.name }} - Bill
+Split{% endblock %} {% block content %}
+<h2>Create New Bill for {{ group.name }}</h2>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+    <div class="form-group">
+        <label for="title">Bill Title *</label>
+        <input type="text" id="title" name="title" required />
+    </div>
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="3"></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="subtotal">Subtotal ($) *</label>
+        <input
+            type="number"
+            id="subtotal"
+            name="subtotal"
+            step="0.01"
+            min="0"
+            required
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="tax_amount">Tax Amount ($)</label>
+        <input
+            type="number"
+            id="tax_amount"
+            name="tax_amount"
+            step="0.01"
+            min="0"
+            value="0"
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="tip_amount">Tip Amount ($)</label>
+        <input
+            type="number"
+            id="tip_amount"
+            name="tip_amount"
+            step="0.01"
+            min="0"
+            value="0"
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="split_method">Split Method</label>
+        <select
+            id="split_method"
+            name="split_method"
+            onchange="toggleSplitOptions()"
+        >
+            <option value="equal">Split Equally</option>
+            <option value="itemized">Itemized (by items)</option>
+            <option value="percentage">By Percentage</option>
+            <option value="custom">Custom Amounts</option>
+        </select>
+    </div>
+
+    <div id="items_section" style="display: none">
+        <h4>Items</h4>
+        <div id="items_container">
+            <div class="item-row">
+                <input
+                    type="text"
+                    name="item_name"
+                    placeholder="Item name"
+                    style="width: 30%"
+                />
+                <input
+                    type="number"
+                    name="item_price"
+                    placeholder="Price"
+                    step="0.01"
+                    min="0"
+                    style="width: 20%"
+                />
+                <input
+                    type="number"
+                    name="item_quantity"
+                    placeholder="Qty"
+                    min="1"
+                    value="1"
+                    style="width: 15%"
+                />
+                <label
+                    ><input type="checkbox" name="item_shared" value="0" />
+                    Shared</label
+                >
+            </div>
+        </div>
+        <button type="button" onclick="addItem()">Add Another Item</button>
+    </div>
+
+    <div class="form-group">
+        <label>Participants *</label>
+        {% for member in members %}
+        <div class="participant-row">
+            <input
+                type="checkbox"
+                id="participant_{{ member.id }}"
+                name="participants"
+                value="{{ member.id }}"
+                onchange="updateSplitOptions()"
+            />
+            <label for="participant_{{ member.id }}">{{ member.name }}</label>
+
+            <div
+                id="percentage_{{ member.id }}"
+                class="split-option"
+                style="display: none"
+            >
+                <input
+                    type="number"
+                    name="percentage_{{ member.id }}"
+                    placeholder="%"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                />
+            </div>
+
+            <div
+                id="custom_{{ member.id }}"
+                class="split-option"
+                style="display: none"
+            >
+                <input
+                    type="number"
+                    name="custom_amount_{{ member.id }}"
+                    placeholder="$"
+                    min="0"
+                    step="0.01"
+                />
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <button type="submit" class="btn">Create Bill</button>
+    <a href="/groups/{{ group.id }}" class="btn btn-secondary">Cancel</a>
+</form>
+
+<script>
+    let itemCount = 1;
+
+    function toggleSplitOptions() {
+        const splitMethod = document.getElementById("split_method").value;
+        const itemsSection = document.getElementById("items_section");
+
+        // Hide all split options first
+        document
+            .querySelectorAll(".split-option")
+            .forEach((el) => (el.style.display = "none"));
+
+        if (splitMethod === "itemized") {
+            itemsSection.style.display = "block";
+        } else {
+            itemsSection.style.display = "none";
+        }
+
+        if (splitMethod === "percentage") {
+            document
+                .querySelectorAll('[id^="percentage_"]')
+                .forEach((el) => (el.style.display = "inline-block"));
+        } else if (splitMethod === "custom") {
+            document
+                .querySelectorAll('[id^="custom_"]')
+                .forEach((el) => (el.style.display = "inline-block"));
+        }
+    }
+
+    function addItem() {
+        const container = document.getElementById("items_container");
+        const newItem = document.createElement("div");
+        newItem.className = "item-row";
+        newItem.innerHTML = `
+        <input type="text" name="item_name" placeholder="Item name" style="width: 30%;">
+        <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;">
+        <input type="number" name="item_quantity" placeholder="Qty" min="1" value="1" style="width: 15%;">
+        <label><input type="checkbox" name="item_shared" value="${itemCount}"> Shared</label>
+        <button type="button" onclick="removeItem(this)">Remove</button>
+    `;
+        container.appendChild(newItem);
+        itemCount++;
+    }
+
+    function removeItem(button) {
+        button.parentElement.remove();
+    }
+
+    function updateSplitOptions() {
+        // This function can be used to update split options when participants change
+        // For now, it's just a placeholder
+    }
+
+    // Calculate total amount automatically
+    function updateTotal() {
+        const subtotal =
+            parseFloat(document.getElementById("subtotal").value) || 0;
+        const tax =
+            parseFloat(document.getElementById("tax_amount").value) || 0;
+        const tip =
+            parseFloat(document.getElementById("tip_amount").value) || 0;
+        const total = subtotal + tax + tip;
+
+        // You could display this total somewhere if needed
+        console.log("Total:", total);
+    }
+
+    document.getElementById("subtotal").addEventListener("input", updateTotal);
+    document
+        .getElementById("tax_amount")
+        .addEventListener("input", updateTotal);
+    document
+        .getElementById("tip_amount")
+        .addEventListener("input", updateTotal);
+</script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}{{ group.name }} - Bill Split{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h2>{{ group.name }}</h2>
+        {% if group.description %}
+        <p>{{ group.description }}</p>
+        {% endif %}
+    </div>
+    <a href="/groups/{{ group.id }}/bills/create" class="btn">Add New Bill</a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div>
+        <h3>Members</h3>
+        {% for member in members %}
+        <div class="card">
+            <div class="user-info">
+                {% if member.profile_picture %}
+                <img src="{{ member.profile_picture }}" alt="{{ member.name }}">
+                {% endif %}
+                <span>{{ member.name }}</span>
+            </div>
+        </div>
+        {% endfor %}
+        
+        <div class="card">
+            <h4>Add Member</h4>
+            <form id="add-member-form">
+                <div class="form-group">
+                    <input type="email" name="email" placeholder="Enter email address" required>
+                </div>
+                <button type="submit" class="btn">Add Member</button>
+            </form>
+            <div id="add-member-result"></div>
+        </div>
+    </div>
+    
+    <div>
+        <h3>Bills</h3>
+        {% if bills %}
+            {% for bill in bills %}
+            <div class="card">
+                <h4><a href="/bills/{{ bill.id }}" style="text-decoration: none; color: inherit;">{{ bill.title }}</a></h4>
+                <p><strong>${{ "%.2f"|format(bill.total_amount) }}</strong></p>
+                {% if bill.description %}
+                <p>{{ bill.description }}</p>
+                {% endif %}
+                <small>Created {{ bill.created_at.strftime('%B %d, %Y') }}</small>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="card">
+                <p>No bills yet. <a href="/groups/{{ group.id }}/bills/create">Create the first bill!</a></p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('add-member-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    fetch('/groups/{{ group.id }}/add_member', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        const resultDiv = document.getElementById('add-member-result');
+        if (data.success) {
+            resultDiv.innerHTML = '<div class="success">' + data.message + '</div>';
+            this.reset();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            resultDiv.innerHTML = '<div class="error">' + data.error + '</div>';
+        }
+    })
+    .catch(error => {
+        document.getElementById('add-member-result').innerHTML = '<div class="error">An error occurred</div>';
+    });
+});
+</script>
+{% endblock %}
