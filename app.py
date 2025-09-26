@@ -133,8 +133,19 @@ class UserDebt(db.Model):
 
 # Helper functions
 def get_current_user():
+    # Check for regular web session
     if "user_id" in session:
         return User.query.get(session["user_id"])
+
+    # Check for mobile session token in Authorization header
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        token_key = f"mobile_token_{token}"
+        if token_key in session:
+            user_id = session[token_key]
+            return User.query.get(user_id)
+
     return None
 
 
@@ -328,8 +339,15 @@ def auth_google_callback():
         # Check if this was a mobile request
         state = request.args.get("state", "web")
         if state == "mobile":
-            # Redirect to custom URL scheme for mobile app
-            return redirect(f"billsplit://success?user_id={user.id}")
+            # For mobile, include session ID in the callback URL
+            # Generate a simple session token (in production, use something more secure)
+            import secrets
+
+            session_token = secrets.token_urlsafe(32)
+            session[f"mobile_token_{session_token}"] = user.id
+            return redirect(
+                f"billsplit://success?session_token={session_token}&user_id={user.id}"
+            )
         else:
             # Redirect to web app
             return redirect("/")
