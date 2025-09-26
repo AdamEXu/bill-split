@@ -10,9 +10,6 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 
-# In-memory store for mobile session tokens (in production, use Redis or database)
-mobile_tokens = {}
-
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///billsplit.db"
@@ -134,6 +131,14 @@ class UserDebt(db.Model):
     __table_args__ = (db.UniqueConstraint("group_id", "debtor_id", "creditor_id"),)
 
 
+class MobileToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(100), unique=True, nullable=False)
+    user_id = db.Column(db.String(50), db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=True)  # For future token expiration
+
+
 # Helper functions
 def get_current_user():
     # Check for regular web session
@@ -145,13 +150,14 @@ def get_current_user():
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         print(f"Mobile token validation: {token}")
-        print(f"Available tokens: {list(mobile_tokens.keys())}")
-        if token in mobile_tokens:
-            user_id = mobile_tokens[token]
-            print(f"Token valid, user_id: {user_id}")
-            return User.query.get(user_id)
+
+        # Look up token in database
+        mobile_token = MobileToken.query.filter_by(token=token).first()
+        if mobile_token:
+            print(f"Token valid, user_id: {mobile_token.user_id}")
+            return User.query.get(mobile_token.user_id)
         else:
-            print("Token not found in mobile_tokens")
+            print("Token not found in database")
 
     return None
 
@@ -351,9 +357,14 @@ def auth_google_callback():
             import secrets
 
             session_token = secrets.token_urlsafe(32)
-            mobile_tokens[session_token] = user.id
+
+            # Store token in database
+            mobile_token = MobileToken(token=session_token, user_id=user.id)
+            db.session.add(mobile_token)
+            db.session.commit()
+
             print(f"Generated mobile token: {session_token} for user: {user.id}")
-            print(f"Mobile tokens store: {mobile_tokens}")
+            print(f"Stored token in database")
             return redirect(
                 f"billsplit://success?session_token={session_token}&user_id={user.id}"
             )
@@ -693,10 +704,18 @@ def mark_paid(bill_id):
 # API endpoints for mobile app
 @app.route("/api/debug/tokens", methods=["GET"])
 def debug_tokens():
+    tokens = MobileToken.query.all()
     return jsonify(
         {
-            "mobile_tokens": list(mobile_tokens.keys()),
-            "mobile_tokens_count": len(mobile_tokens),
+            "mobile_tokens": [
+                {
+                    "token": t.token,
+                    "user_id": t.user_id,
+                    "created_at": t.created_at.isoformat(),
+                }
+                for t in tokens
+            ],
+            "mobile_tokens_count": len(tokens),
         }
     )
 
