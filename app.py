@@ -261,12 +261,16 @@ def login():
 
 @app.route("/auth/google")
 def auth_google():
+    # Check if this is a mobile app request
+    is_mobile = request.args.get("mobile") == "true"
+
     google_auth_url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(
         {
             "client_id": GOOGLE_CLIENT_ID,
             "redirect_uri": url_for("auth_google_callback", _external=True),
             "response_type": "code",
             "scope": "email profile",
+            "state": "mobile" if is_mobile else "web",  # Pass mobile flag through state
         }
     )
     return redirect(google_auth_url)
@@ -320,7 +324,15 @@ def auth_google_callback():
 
         # Create session
         session["user_id"] = user.id
-        return redirect("/")
+
+        # Check if this was a mobile request
+        state = request.args.get("state", "web")
+        if state == "mobile":
+            # Redirect to custom URL scheme for mobile app
+            return redirect(f"billsplit://success?user_id={user.id}")
+        else:
+            # Redirect to web app
+            return redirect("/")
 
     except Exception as e:
         print(f"Authentication error: {str(e)}")
