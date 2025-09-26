@@ -691,12 +691,27 @@ def mark_paid(bill_id):
 
 
 # API endpoints for mobile app
+@app.route("/api/debug/tokens", methods=["GET"])
+def debug_tokens():
+    return jsonify(
+        {
+            "mobile_tokens": list(mobile_tokens.keys()),
+            "mobile_tokens_count": len(mobile_tokens),
+        }
+    )
+
+
 @app.route("/api/user", methods=["GET"])
 def api_get_user():
+    print("=== /api/user called ===")
+    print(f"Request headers: {dict(request.headers)}")
+
     user = get_current_user()
     if not user:
+        print("No user found, returning 401")
         return jsonify({"error": "Not authenticated"}), 401
 
+    print(f"User found: {user.id}")
     return jsonify(
         {
             "id": user.id,
