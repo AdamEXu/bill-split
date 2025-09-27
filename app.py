@@ -9,9 +9,29 @@ from datetime import datetime
 import openai
 import base64
 import json
+from typing import List
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
+
+
+# Pydantic models for structured receipt parsing
+class ReceiptItem(BaseModel):
+    name: str
+    price: float
+    quantity: int
+
+
+class ReceiptData(BaseModel):
+    title: str
+    description: str
+    subtotal: float
+    tax_amount: float
+    tip_amount: float
+    total_amount: float
+    items: List[ReceiptItem]
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
@@ -77,12 +97,18 @@ class Bill(db.Model):
         db.String(20), default="equal"
     )  # 'equal', 'itemized', 'percentage', 'custom'
     created_by = db.Column(db.String(50), db.ForeignKey("user.id"), nullable=False)
+    paid_by = db.Column(
+        db.String(50), db.ForeignKey("user.id"), nullable=True
+    )  # Who actually paid the bill
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
     participants = db.relationship("BillParticipant", backref="bill", lazy=True)
     items = db.relationship("BillItem", backref="bill", lazy=True)
-    creator = db.relationship("User", backref="created_bills")
+    creator = db.relationship(
+        "User", foreign_keys=[created_by], backref="created_bills"
+    )
+    payer = db.relationship("User", foreign_keys=[paid_by], backref="paid_bills")
 
 
 class BillItem(db.Model):
@@ -267,12 +293,13 @@ def update_debt_tracking(group_id, bill, splits):
                 db.session.add(debt)
 
 
-def parse_receipt_with_ai(image_file):
+def parse_receipt_with_ai(image_file, max_retries=3):
     """
-    Parse a receipt image using OpenAI's GPT-5 vision capabilities.
+    Parse a receipt image using OpenAI's GPT-4o vision capabilities with structured output.
 
     Args:
         image_file: File object containing the receipt image
+        max_retries: Maximum number of retry attempts for failed parsing
 
     Returns:
         dict: Parsed receipt data with structure:
@@ -280,6 +307,7 @@ def parse_receipt_with_ai(image_file):
             'success': bool,
             'data': {
                 'title': str,
+                'description': str,
                 'subtotal': float,
                 'tax_amount': float,
                 'tip_amount': float,
@@ -295,127 +323,105 @@ def parse_receipt_with_ai(image_file):
             'error': str (if success is False)
         }
     """
-    try:
-        # Read and encode the image
-        image_data = image_file.read()
-        image_base64 = base64.b64encode(image_data).decode("utf-8")
 
-        # Create the prompt for structured receipt parsing
-        prompt = """
-        Please analyze this receipt image and extract the following information in JSON format:
+    for attempt in range(max_retries):
+        try:
+            # Read and encode the image
+            image_data = image_file.read()
+            image_base64 = base64.b64encode(image_data).decode("utf-8")
 
-        {
-            "title": "Restaurant/Store name or descriptive title",
-            "subtotal": 0.00,
-            "tax_amount": 0.00,
-            "tip_amount": 0.00,
-            "total_amount": 0.00,
-            "items": [
-                {
-                    "name": "Item name",
-                    "price": 0.00,
-                    "quantity": 1
-                }
-            ]
-        }
+            # Reset file pointer for potential retries
+            image_file.seek(0)
 
-        Instructions:
-        - Extract the exact amounts as numbers (no currency symbols)
-        - If tip is not shown, set tip_amount to 0.00
-        - If tax is not shown separately, set tax_amount to 0.00
-        - For items, extract individual line items with their prices
-        - If quantity is not specified, assume 1
-        - If you can't find subtotal, calculate it from items total
-        - Ensure total_amount = subtotal + tax_amount + tip_amount
-        - Use a descriptive title based on the restaurant/store name
-        - Return only valid JSON, no additional text
-        """
+            # Create the prompt for structured receipt parsing
+            prompt = """
+            Analyze this receipt image and extract all the information accurately.
 
-        # Make the API call to GPT-5 with vision
-        response = openai_client.chat.completions.create(
-            model="gpt-5",  # Using the latest GPT-5 model
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}",
-                                "detail": "high",
+            For the title: Use the restaurant/store name from the receipt.
+            For the description: Create a brief, natural description like "Dinner at Mario's Pizza on Main Street" or "Grocery shopping at Whole Foods".
+
+            Extract all line items with their exact prices and quantities.
+            If no quantity is shown, assume 1.
+            If tip is not shown, set to 0.00.
+            If tax is not shown separately, set to 0.00.
+
+            Ensure the math is correct: total_amount should equal subtotal + tax_amount + tip_amount.
+            """
+
+            # Make the API call to GPT-5-mini with structured output (fast and supports vision)
+            completion = openai_client.chat.completions.parse(
+                model="gpt-5-mini",  # Using GPT-5-mini for fast vision + structured outputs
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}",
+                                    "detail": "auto",  # Use low detail for faster processing
+                                },
                             },
-                        },
+                        ],
+                    }
+                ],
+                response_format=ReceiptData,  # Use structured output with Pydantic model
+                reasoning_effort="minimal",  # Disable reasoning for faster processing
+            )
+
+            # Parse the structured response
+            message = completion.choices[0].message
+            if message.parsed:
+                receipt_data = message.parsed
+
+                # Convert Pydantic model to dict
+                data = {
+                    "title": receipt_data.title,
+                    "description": receipt_data.description,
+                    "subtotal": receipt_data.subtotal,
+                    "tax_amount": receipt_data.tax_amount,
+                    "tip_amount": receipt_data.tip_amount,
+                    "total_amount": receipt_data.total_amount,
+                    "items": [
+                        {
+                            "name": item.name,
+                            "price": item.price,
+                            "quantity": item.quantity,
+                        }
+                        for item in receipt_data.items
                     ],
                 }
-            ],
-            max_completion_tokens=1000,  # GPT-5 uses max_completion_tokens instead of max_tokens
-            # Note: GPT-5 only supports default temperature of 1, so we omit the temperature parameter
-        )
 
-        # Parse the response
-        content = response.choices[0].message.content.strip()
+                return {"success": True, "data": data}
 
-        # Try to extract JSON from the response
-        try:
-            # Remove any markdown code blocks if present
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            elif message.refusal:
+                return {
+                    "success": False,
+                    "error": f"AI refused to process the image: {message.refusal}",
+                }
+            else:
+                # This shouldn't happen with structured output, but handle it
+                return {"success": False, "error": "No parsed data received from AI"}
 
-            parsed_data = json.loads(content)
+        except Exception as e:
+            error_msg = str(e)
 
-            # Validate the parsed data structure
-            required_fields = [
-                "title",
-                "subtotal",
-                "tax_amount",
-                "tip_amount",
-                "total_amount",
-                "items",
-            ]
-            for field in required_fields:
-                if field not in parsed_data:
-                    return {
-                        "success": False,
-                        "error": f"Missing required field: {field}",
-                    }
+            # If this is the last attempt, return the error
+            if attempt == max_retries - 1:
+                return {
+                    "success": False,
+                    "error": f"Error processing receipt after {max_retries} attempts: {error_msg}",
+                }
 
-            # Ensure numeric fields are floats
-            for field in ["subtotal", "tax_amount", "tip_amount", "total_amount"]:
-                try:
-                    parsed_data[field] = float(parsed_data[field])
-                except (ValueError, TypeError):
-                    parsed_data[field] = 0.0
+            # For retries, wait a moment and try again
+            import time
 
-            # Validate and clean items
-            if not isinstance(parsed_data["items"], list):
-                parsed_data["items"] = []
+            time.sleep(1)
+            continue
 
-            cleaned_items = []
-            for item in parsed_data["items"]:
-                if isinstance(item, dict) and "name" in item and "price" in item:
-                    cleaned_item = {
-                        "name": str(item["name"]),
-                        "price": float(item.get("price", 0.0)),
-                        "quantity": int(item.get("quantity", 1)),
-                    }
-                    cleaned_items.append(cleaned_item)
-
-            parsed_data["items"] = cleaned_items
-
-            return {"success": True, "data": parsed_data}
-
-        except json.JSONDecodeError as e:
-            return {
-                "success": False,
-                "error": f"Failed to parse AI response as JSON: {str(e)}",
-            }
-
-    except Exception as e:
-        return {"success": False, "error": f"Error processing receipt: {str(e)}"}
+    # This should never be reached, but just in case
+    return {"success": False, "error": "Maximum retries exceeded"}
 
 
 # Routes
@@ -662,14 +668,15 @@ def create_bill(group_id):
         tax_amount = request.form.get("tax_amount", "0")
         tip_amount = request.form.get("tip_amount", "0")
         split_method = request.form.get("split_method", "equal")
+        paid_by = request.form.get("paid_by")
         participant_ids = request.form.getlist("participants")
 
-        if not title or not subtotal:
+        if not title or not subtotal or not paid_by:
             return render_template(
                 "create_bill.html",
                 group=group,
                 members=members,
-                error="Title and subtotal are required",
+                error="Title, subtotal, and who paid are required",
             )
 
         try:
@@ -704,6 +711,7 @@ def create_bill(group_id):
             total_amount=total_amount,
             split_method=split_method,
             created_by=user.id,
+            paid_by=paid_by,
         )
         db.session.add(bill)
         db.session.flush()
@@ -813,6 +821,165 @@ def create_bill(group_id):
         return redirect(url_for("view_bill", bill_id=bill.id))
 
     return render_template("create_bill.html", group=group, members=members)
+
+
+@app.route("/groups/<group_id>/bills/<bill_id>/edit", methods=["GET", "POST"])
+def edit_bill(group_id, bill_id):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    # Check if user is member of group
+    membership = GroupMember.query.filter_by(group_id=group_id, user_id=user.id).first()
+    if not membership:
+        return render_template("error.html", error="You are not a member of this group")
+
+    group = Group.query.get_or_404(group_id)
+    bill = Bill.query.filter_by(id=bill_id, group_id=group_id).first_or_404()
+    members = (
+        db.session.query(User)
+        .join(GroupMember)
+        .filter(GroupMember.group_id == group_id)
+        .all()
+    )
+
+    if request.method == "POST":
+        title = request.form.get("title")
+        description = request.form.get("description", "")
+        subtotal = request.form.get("subtotal")
+        tax_amount = request.form.get("tax_amount", "0")
+        tip_amount = request.form.get("tip_amount", "0")
+        split_method = request.form.get("split_method", "equal")
+        paid_by = request.form.get("paid_by")
+        participant_ids = request.form.getlist("participants")
+
+        if not title or not subtotal or not paid_by:
+            return render_template(
+                "edit_bill.html",
+                group=group,
+                bill=bill,
+                members=members,
+                error="Title, subtotal, and who paid are required",
+            )
+
+        try:
+            subtotal = float(subtotal)
+            tax_amount = float(tax_amount)
+            tip_amount = float(tip_amount)
+            total_amount = subtotal + tax_amount + tip_amount
+        except ValueError:
+            return render_template(
+                "edit_bill.html",
+                group=group,
+                bill=bill,
+                members=members,
+                error="Invalid amounts",
+            )
+
+        if not participant_ids:
+            return render_template(
+                "edit_bill.html",
+                group=group,
+                bill=bill,
+                members=members,
+                error="At least one participant is required",
+            )
+
+        # Update bill
+        bill.title = title
+        bill.description = description
+        bill.subtotal = subtotal
+        bill.tax_amount = tax_amount
+        bill.tip_amount = tip_amount
+        bill.total_amount = total_amount
+        bill.split_method = split_method
+        bill.paid_by = paid_by
+
+        # Clear existing participants and items
+        BillParticipant.query.filter_by(bill_id=bill.id).delete()
+        BillItem.query.filter_by(bill_id=bill.id).delete()
+
+        # Handle items if provided (for itemized bills)
+        items_data = []
+        if split_method == "itemized":
+            # Parse items from form data
+            item_names = request.form.getlist("item_name")
+            item_prices = request.form.getlist("item_price")
+            item_quantities = request.form.getlist("item_quantity")
+            item_shared = request.form.getlist("item_shared")
+
+            for i, name in enumerate(item_names):
+                if name and i < len(item_prices):
+                    try:
+                        price = float(item_prices[i])
+                        quantity = (
+                            int(item_quantities[i]) if i < len(item_quantities) else 1
+                        )
+                        is_shared = str(i) in item_shared
+
+                        # Create bill item
+                        bill_item = BillItem(
+                            bill_id=bill.id,
+                            name=name,
+                            price=price,
+                            quantity=quantity,
+                            is_shared=is_shared,
+                        )
+                        db.session.add(bill_item)
+                        db.session.flush()
+
+                        items_data.append(
+                            {
+                                "id": bill_item.id,
+                                "name": name,
+                                "price": price,
+                                "quantity": quantity,
+                                "is_shared": is_shared,
+                                "participants": (
+                                    participant_ids if not is_shared else []
+                                ),
+                            }
+                        )
+                    except ValueError:
+                        continue
+
+        # Calculate splits and create participants
+        splits = calculate_bill_splits(
+            bill,
+            participant_ids,
+            items_data,
+            split_method,
+            {
+                pid: request.form.get(f"custom_amount_{pid}", 0)
+                for pid in participant_ids
+            },
+        )
+
+        # Create bill participants
+        for participant_id in participant_ids:
+            amount_owed = splits.get(participant_id, 0)
+            participant = BillParticipant(
+                bill_id=bill.id,
+                user_id=participant_id,
+                amount_owed=amount_owed,
+            )
+            db.session.add(participant)
+
+        # Update debt tracking
+        update_debt_tracking(group_id, bill, splits)
+
+        db.session.commit()
+        return redirect(url_for("view_group", group_id=group_id))
+
+    # GET request - show edit form
+    current_participants = [p.user_id for p in bill.participants]
+    return render_template(
+        "edit_bill.html",
+        group=group,
+        bill=bill,
+        members=members,
+        current_participants=current_participants,
+    )
 
 
 @app.route("/bills/<bill_id>")

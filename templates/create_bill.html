@@ -6,281 +6,537 @@ Split{% endblock %} {% block content %}
 <div class="error">{{ error }}</div>
 {% endif %}
 
-<form method="POST">
-    <div class="form-group">
-        <label for="title">Bill Title *</label>
-        <input type="text" id="title" name="title" required />
-    </div>
-
-    <div class="form-group">
-        <label for="description">Description</label>
-        <textarea id="description" name="description" rows="3"></textarea>
-    </div>
-
-    <div class="form-group">
-        <label for="receipt_image">Upload Receipt (Optional)</label>
-        <input
-            type="file"
-            id="receipt_image"
-            name="receipt_image"
-            accept="image/*"
-            onchange="handleReceiptUpload(this)"
-        />
-        <small style="color: #666; display: block; margin-top: 5px">
-            Upload a receipt image to automatically extract bill details using
-            AI
-        </small>
-        <div id="receipt_status" style="margin-top: 10px; display: none">
-            <div id="receipt_loading" style="display: none; color: #007bff">
-                🤖 Analyzing receipt with AI...
-            </div>
-            <div id="receipt_success" style="display: none; color: #28a745">
-                ✅ Receipt processed successfully! Form fields have been
-                populated.
-            </div>
-            <div id="receipt_error" style="display: none; color: #dc3545">
-                ❌ <span id="receipt_error_message"></span>
-            </div>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <label for="subtotal">Subtotal ($) *</label>
-        <input
-            type="number"
-            id="subtotal"
-            name="subtotal"
-            step="0.01"
-            min="0"
-            required
-        />
-    </div>
-
-    <div class="form-group">
-        <label for="tax_amount">Tax Amount ($)</label>
-        <input
-            type="number"
-            id="tax_amount"
-            name="tax_amount"
-            step="0.01"
-            min="0"
-            value="0"
-        />
-    </div>
-
-    <div class="form-group">
-        <label for="tip_amount">Tip Amount ($)</label>
-        <input
-            type="number"
-            id="tip_amount"
-            name="tip_amount"
-            step="0.01"
-            min="0"
-            value="0"
-        />
-    </div>
-
-    <div class="form-group">
-        <label for="split_method">Split Method</label>
-        <select
-            id="split_method"
-            name="split_method"
-            onchange="toggleSplitOptions()"
+<!-- Tab Navigation -->
+<div class="tab-container">
+    <div class="tab-buttons">
+        <button
+            type="button"
+            class="tab-button active"
+            onclick="switchTab('ai-entry')"
         >
-            <option value="equal">Split Equally</option>
-            <option value="itemized">Itemized (by items)</option>
-            <option value="percentage">By Percentage</option>
-            <option value="custom">Custom Amounts</option>
-        </select>
+            🤖 AI Entry
+        </button>
+        <button
+            type="button"
+            class="tab-button"
+            onclick="switchTab('manual-entry')"
+        >
+            ✏️ Manual Entry
+        </button>
     </div>
+</div>
 
-    <div id="items_section" style="display: none">
-        <h4>Items</h4>
-        <div id="items_container">
-            <div class="item-row">
-                <input
-                    type="text"
-                    name="item_name"
-                    placeholder="Item name"
-                    style="width: 30%"
-                />
-                <input
-                    type="number"
-                    name="item_price"
-                    placeholder="Price"
-                    step="0.01"
-                    min="0"
-                    style="width: 20%"
-                />
-                <input
-                    type="number"
-                    name="item_quantity"
-                    placeholder="Qty"
-                    min="1"
-                    value="1"
-                    style="width: 15%"
-                />
-                <label
-                    ><input type="checkbox" name="item_shared" value="0" />
-                    Shared</label
-                >
-            </div>
-        </div>
-        <button type="button" onclick="addItem()">Add Another Item</button>
-    </div>
+<!-- AI Entry Tab -->
+<div id="ai-entry" class="tab-content active">
+    <div class="ai-upload-section">
+        <h3>Upload Receipt for AI Processing</h3>
+        <p>
+            Upload a receipt image and let AI automatically extract all the
+            details for you!
+        </p>
 
-    <div class="form-group">
-        <label>Participants *</label>
-        {% for member in members %}
-        <div class="participant-row">
+        <div class="upload-area">
             <input
-                type="checkbox"
-                id="participant_{{ member.id }}"
-                name="participants"
-                value="{{ member.id }}"
-                onchange="updateSplitOptions()"
+                type="file"
+                id="ai_receipt_image"
+                accept="image/*"
+                onchange="handleAIReceiptUpload(this)"
             />
-            <label for="participant_{{ member.id }}">{{ member.name }}</label>
+            <label for="ai_receipt_image" class="upload-label">
+                📄 Choose Receipt Image
+            </label>
+        </div>
 
+        <div id="ai_status" style="margin-top: 20px; display: none">
             <div
-                id="percentage_{{ member.id }}"
-                class="split-option"
-                style="display: none"
+                id="ai_loading"
+                style="
+                    display: none;
+                    color: #007bff;
+                    text-align: center;
+                    padding: 20px;
+                "
             >
-                <input
-                    type="number"
-                    name="percentage_{{ member.id }}"
-                    placeholder="%"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                />
+                <div class="spinner"></div>
+                🤖 AI is analyzing your receipt...<br />
+                <small>This may take a few seconds</small>
             </div>
-
             <div
-                id="custom_{{ member.id }}"
-                class="split-option"
-                style="display: none"
+                id="ai_success"
+                style="
+                    display: none;
+                    color: #28a745;
+                    text-align: center;
+                    padding: 20px;
+                "
             >
-                <input
-                    type="number"
-                    name="custom_amount_{{ member.id }}"
-                    placeholder="$"
-                    min="0"
-                    step="0.01"
-                />
+                ✅ Receipt processed successfully!<br />
+                <small>Switching to manual entry for review...</small>
+            </div>
+            <div
+                id="ai_error"
+                style="
+                    display: none;
+                    color: #dc3545;
+                    text-align: center;
+                    padding: 20px;
+                "
+            >
+                ❌ <span id="ai_error_message"></span><br />
+                <small>Please try again or switch to manual entry</small>
             </div>
         </div>
-        {% endfor %}
     </div>
+</div>
 
-    <button type="submit" class="btn">Create Bill</button>
-    <a href="/groups/{{ group.id }}" class="btn btn-secondary">Cancel</a>
-</form>
+<!-- Manual Entry Tab -->
+<div id="manual-entry" class="tab-content">
+    <form method="POST">
+        <div class="form-group">
+            <label for="title">Bill Title *</label>
+            <input type="text" id="title" name="title" required />
+        </div>
 
-<script>
-    let itemCount = 1;
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="3"></textarea>
+        </div>
 
-    function handleReceiptUpload(input) {
-        const file = input.files[0];
-        if (!file) return;
 
-        // Show loading state
-        showReceiptStatus("loading");
 
-        // Create FormData to send the file
-        const formData = new FormData();
-        formData.append("receipt_image", file);
+        <div class="form-group">
+            <label for="subtotal">Subtotal ($) *</label>
+            <input
+                type="number"
+                id="subtotal"
+                name="subtotal"
+                step="0.01"
+                min="0"
+                required
+            />
+        </div>
 
-        // Send to backend for processing
-        fetch("/api/parse-receipt", {
-            method: "POST",
-            body: formData,
-        })
-            .then((response) => response.json())
-            .then((data) => {
+        <div class="form-group">
+            <label for="tax_amount">Tax Amount ($)</label>
+            <input
+                type="number"
+                id="tax_amount"
+                name="tax_amount"
+                step="0.01"
+                min="0"
+                value="0"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="tip_amount">Tip Amount ($)</label>
+            <input
+                type="number"
+                id="tip_amount"
+                name="tip_amount"
+                step="0.01"
+                min="0"
+                value="0"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="paid_by">Who Paid the Bill? *</label>
+            <select id="paid_by" name="paid_by" required>
+                <option value="">Select who paid...</option>
+                {% for member in members %}
+                <option value="{{ member.id }}">{{ member.name }}</option>
+                {% endfor %}
+            </select>
+            <small style="color: #666; display: block; margin-top: 5px;">
+                This person will be owed money by the other participants
+            </small>
+        </div>
+
+        <div class="form-group">
+            <label for="split_method">Split Method</label>
+            <select
+                id="split_method"
+                name="split_method"
+                onchange="toggleSplitOptions()"
+            >
+                <option value="equal">Split Equally</option>
+                <option value="itemized">Itemized (by items)</option>
+                <option value="percentage">By Percentage</option>
+                <option value="custom">Custom Amounts</option>
+            </select>
+        </div>
+
+        <div id="items_section" style="display: none">
+            <h4>Items</h4>
+            <div id="items_container">
+                <div class="item-row">
+                    <input
+                        type="text"
+                        name="item_name"
+                        placeholder="Item name"
+                        style="width: 30%"
+                    />
+                    <input
+                        type="number"
+                        name="item_price"
+                        placeholder="Price"
+                        step="0.01"
+                        min="0"
+                        style="width: 20%"
+                    />
+                    <input
+                        type="number"
+                        name="item_quantity"
+                        placeholder="Qty"
+                        min="1"
+                        value="1"
+                        style="width: 15%"
+                    />
+                    <label
+                        ><input type="checkbox" name="item_shared" value="0" />
+                        Shared</label
+                    >
+                </div>
+            </div>
+            <button type="button" onclick="addItem()">Add Another Item</button>
+        </div>
+
+        <div class="form-group">
+            <label>Participants *</label>
+            {% for member in members %}
+            <div class="participant-row">
+                <input
+                    type="checkbox"
+                    id="participant_{{ member.id }}"
+                    name="participants"
+                    value="{{ member.id }}"
+                    onchange="updateSplitOptions()"
+                />
+                <label for="participant_{{ member.id }}"
+                    >{{ member.name }}</label
+                >
+
+                <div
+                    id="percentage_{{ member.id }}"
+                    class="split-option"
+                    style="display: none"
+                >
+                    <input
+                        type="number"
+                        name="percentage_{{ member.id }}"
+                        placeholder="%"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                    />
+                </div>
+
+                <div
+                    id="custom_{{ member.id }}"
+                    class="split-option"
+                    style="display: none"
+                >
+                    <input
+                        type="number"
+                        name="custom_amount_{{ member.id }}"
+                        placeholder="$"
+                        min="0"
+                        step="0.01"
+                    />
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <button type="submit" class="btn">Create Bill</button>
+        <a href="/groups/{{ group.id }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+
+<style>
+/* Tab Styles */
+.tab-container {
+    margin-bottom: 20px;
+}
+
+.tab-buttons {
+    display: flex;
+    border-bottom: 2px solid #ddd;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: 12px 24px;
+    cursor: pointer;
+    font-size: 16px;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+    background-color: #f5f5f5;
+}
+
+.tab-button.active {
+    border-bottom-color: #007bff;
+    color: #007bff;
+    font-weight: bold;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* AI Upload Styles */
+.ai-upload-section {
+    text-align: center;
+    padding: 40px 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.upload-area {
+    margin: 30px 0;
+}
+
+.upload-area input[type="file"] {
+    display: none;
+}
+
+.upload-label {
+    display: inline-block;
+    padding: 15px 30px;
+    background: #007bff;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: background-color 0.3s ease;
+}
+
+.upload-label:hover {
+    background: #0056b3;
+}
+
+/* Spinner Animation */
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+    <script>
+        let itemCount = 1;
+
+        // Tab switching functionality
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+
+        // AI Receipt Upload Handler
+        function handleAIReceiptUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            // Show loading state
+            showAIStatus('loading');
+
+            // Create FormData to send the file
+            const formData = new FormData();
+            formData.append('receipt_image', file);
+
+            // Send to backend for processing
+            fetch('/api/parse-receipt', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.success) {
                     // Populate form fields with parsed data
                     populateFormFromReceipt(data.data);
-                    showReceiptStatus("success");
+                    showAIStatus('success');
+
+                    // Auto-switch to manual entry after 2 seconds
+                    setTimeout(() => {
+                        switchTab('manual-entry');
+                        document.querySelector('[onclick="switchTab(\'manual-entry\')"]').classList.add('active');
+                        document.querySelector('[onclick="switchTab(\'ai-entry\')"]').classList.remove('active');
+                    }, 2000);
                 } else {
-                    showReceiptStatus(
-                        "error",
-                        data.error || "Failed to process receipt"
-                    );
+                    showAIStatus('error', data.error || 'Failed to process receipt');
                 }
             })
-            .catch((error) => {
-                console.error("Error:", error);
-                showReceiptStatus(
-                    "error",
-                    "Network error occurred while processing receipt"
-                );
+            .catch(error => {
+                console.error('Error:', error);
+                showAIStatus('error', 'Network error occurred while processing receipt');
             });
-    }
-
-    function showReceiptStatus(type, message = "") {
-        const statusDiv = document.getElementById("receipt_status");
-        const loadingDiv = document.getElementById("receipt_loading");
-        const successDiv = document.getElementById("receipt_success");
-        const errorDiv = document.getElementById("receipt_error");
-        const errorMessage = document.getElementById("receipt_error_message");
-
-        // Hide all status divs first
-        loadingDiv.style.display = "none";
-        successDiv.style.display = "none";
-        errorDiv.style.display = "none";
-
-        // Show the appropriate status
-        statusDiv.style.display = "block";
-
-        if (type === "loading") {
-            loadingDiv.style.display = "block";
-        } else if (type === "success") {
-            successDiv.style.display = "block";
-        } else if (type === "error") {
-            errorDiv.style.display = "block";
-            errorMessage.textContent = message;
-        }
-    }
-
-    function populateFormFromReceipt(data) {
-        // Populate basic fields
-        if (data.title) {
-            document.getElementById("title").value = data.title;
         }
 
-        if (data.subtotal) {
-            document.getElementById("subtotal").value =
-                data.subtotal.toFixed(2);
+        function showAIStatus(type, message = '') {
+            const statusDiv = document.getElementById('ai_status');
+            const loadingDiv = document.getElementById('ai_loading');
+            const successDiv = document.getElementById('ai_success');
+            const errorDiv = document.getElementById('ai_error');
+            const errorMessage = document.getElementById('ai_error_message');
+
+            // Hide all status divs first
+            loadingDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+
+            // Show the appropriate status
+            statusDiv.style.display = 'block';
+
+            if (type === 'loading') {
+                loadingDiv.style.display = 'block';
+            } else if (type === 'success') {
+                successDiv.style.display = 'block';
+            } else if (type === 'error') {
+                errorDiv.style.display = 'block';
+                errorMessage.textContent = message;
+            }
         }
 
-        if (data.tax_amount) {
-            document.getElementById("tax_amount").value =
-                data.tax_amount.toFixed(2);
+        // Legacy function for old receipt upload (now unused)
+        function handleReceiptUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            // Show loading state
+            showReceiptStatus("loading");
+
+            // Create FormData to send the file
+            const formData = new FormData();
+            formData.append("receipt_image", file);
+
+            // Send to backend for processing
+            fetch("/api/parse-receipt", {
+                method: "POST",
+                body: formData,
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.success) {
+                        // Populate form fields with parsed data
+                        populateFormFromReceipt(data.data);
+                        showReceiptStatus("success");
+                    } else {
+                        showReceiptStatus(
+                            "error",
+                            data.error || "Failed to process receipt"
+                        );
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error:", error);
+                    showReceiptStatus(
+                        "error",
+                        "Network error occurred while processing receipt"
+                    );
+                });
         }
 
-        if (data.tip_amount) {
-            document.getElementById("tip_amount").value =
-                data.tip_amount.toFixed(2);
+        function showReceiptStatus(type, message = "") {
+            const statusDiv = document.getElementById("receipt_status");
+            const loadingDiv = document.getElementById("receipt_loading");
+            const successDiv = document.getElementById("receipt_success");
+            const errorDiv = document.getElementById("receipt_error");
+            const errorMessage = document.getElementById(
+                "receipt_error_message"
+            );
+
+            // Hide all status divs first
+            loadingDiv.style.display = "none";
+            successDiv.style.display = "none";
+            errorDiv.style.display = "none";
+
+            // Show the appropriate status
+            statusDiv.style.display = "block";
+
+            if (type === "loading") {
+                loadingDiv.style.display = "block";
+            } else if (type === "success") {
+                successDiv.style.display = "block";
+            } else if (type === "error") {
+                errorDiv.style.display = "block";
+                errorMessage.textContent = message;
+            }
         }
 
-        // If items are present, switch to itemized split and populate items
-        if (data.items && data.items.length > 0) {
-            document.getElementById("split_method").value = "itemized";
-            toggleSplitOptions(); // Show items section
+        function populateFormFromReceipt(data) {
+            // Populate basic fields
+            if (data.title) {
+                document.getElementById("title").value = data.title;
+            }
 
-            // Clear existing items
-            const container = document.getElementById("items_container");
-            container.innerHTML = "";
+            if (data.description) {
+                document.getElementById("description").value = data.description;
+            }
 
-            // Add each item
-            data.items.forEach((item, index) => {
-                if (index === 0) {
-                    // Use the first item row that already exists
-                    const firstRow = document.createElement("div");
-                    firstRow.className = "item-row";
-                    firstRow.innerHTML = `
+            if (data.subtotal) {
+                document.getElementById("subtotal").value =
+                    data.subtotal.toFixed(2);
+            }
+
+            if (data.tax_amount) {
+                document.getElementById("tax_amount").value =
+                    data.tax_amount.toFixed(2);
+            }
+
+            if (data.tip_amount) {
+                document.getElementById("tip_amount").value =
+                    data.tip_amount.toFixed(2);
+            }
+
+            // If items are present, switch to itemized split and populate items
+            if (data.items && data.items.length > 0) {
+                document.getElementById("split_method").value = "itemized";
+                toggleSplitOptions(); // Show items section
+
+                // Clear existing items
+                const container = document.getElementById("items_container");
+                container.innerHTML = "";
+
+                // Add each item
+                data.items.forEach((item, index) => {
+                    if (index === 0) {
+                        // Use the first item row that already exists
+                        const firstRow = document.createElement("div");
+                        firstRow.className = "item-row";
+                        firstRow.innerHTML = `
                         <input type="text" name="item_name" placeholder="Item name" style="width: 30%;" value="${
                             item.name
                         }">
@@ -292,12 +548,12 @@ Split{% endblock %} {% block content %}
                         }" style="width: 15%;">
                         <label><input type="checkbox" name="item_shared" value="0"> Shared</label>
                     `;
-                    container.appendChild(firstRow);
-                } else {
-                    // Add additional items
-                    const newItem = document.createElement("div");
-                    newItem.className = "item-row";
-                    newItem.innerHTML = `
+                        container.appendChild(firstRow);
+                    } else {
+                        // Add additional items
+                        const newItem = document.createElement("div");
+                        newItem.className = "item-row";
+                        newItem.innerHTML = `
                         <input type="text" name="item_name" placeholder="Item name" style="width: 30%;" value="${
                             item.name
                         }">
@@ -310,87 +566,90 @@ Split{% endblock %} {% block content %}
                         <label><input type="checkbox" name="item_shared" value="${index}"> Shared</label>
                         <button type="button" onclick="removeItem(this)">Remove</button>
                     `;
-                    container.appendChild(newItem);
-                }
-            });
+                        container.appendChild(newItem);
+                    }
+                });
 
-            itemCount = data.items.length;
+                itemCount = data.items.length;
+            }
+
+            // Update total calculation
+            updateTotal();
         }
 
-        // Update total calculation
-        updateTotal();
-    }
+        function toggleSplitOptions() {
+            const splitMethod = document.getElementById("split_method").value;
+            const itemsSection = document.getElementById("items_section");
 
-    function toggleSplitOptions() {
-        const splitMethod = document.getElementById("split_method").value;
-        const itemsSection = document.getElementById("items_section");
-
-        // Hide all split options first
-        document
-            .querySelectorAll(".split-option")
-            .forEach((el) => (el.style.display = "none"));
-
-        if (splitMethod === "itemized") {
-            itemsSection.style.display = "block";
-        } else {
-            itemsSection.style.display = "none";
-        }
-
-        if (splitMethod === "percentage") {
+            // Hide all split options first
             document
-                .querySelectorAll('[id^="percentage_"]')
-                .forEach((el) => (el.style.display = "inline-block"));
-        } else if (splitMethod === "custom") {
-            document
-                .querySelectorAll('[id^="custom_"]')
-                .forEach((el) => (el.style.display = "inline-block"));
-        }
-    }
+                .querySelectorAll(".split-option")
+                .forEach((el) => (el.style.display = "none"));
 
-    function addItem() {
-        const container = document.getElementById("items_container");
-        const newItem = document.createElement("div");
-        newItem.className = "item-row";
-        newItem.innerHTML = `
+            if (splitMethod === "itemized") {
+                itemsSection.style.display = "block";
+            } else {
+                itemsSection.style.display = "none";
+            }
+
+            if (splitMethod === "percentage") {
+                document
+                    .querySelectorAll('[id^="percentage_"]')
+                    .forEach((el) => (el.style.display = "inline-block"));
+            } else if (splitMethod === "custom") {
+                document
+                    .querySelectorAll('[id^="custom_"]')
+                    .forEach((el) => (el.style.display = "inline-block"));
+            }
+        }
+
+        function addItem() {
+            const container = document.getElementById("items_container");
+            const newItem = document.createElement("div");
+            newItem.className = "item-row";
+            newItem.innerHTML = `
         <input type="text" name="item_name" placeholder="Item name" style="width: 30%;">
         <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;">
         <input type="number" name="item_quantity" placeholder="Qty" min="1" value="1" style="width: 15%;">
         <label><input type="checkbox" name="item_shared" value="${itemCount}"> Shared</label>
         <button type="button" onclick="removeItem(this)">Remove</button>
     `;
-        container.appendChild(newItem);
-        itemCount++;
-    }
+            container.appendChild(newItem);
+            itemCount++;
+        }
 
-    function removeItem(button) {
-        button.parentElement.remove();
-    }
+        function removeItem(button) {
+            button.parentElement.remove();
+        }
 
-    function updateSplitOptions() {
-        // This function can be used to update split options when participants change
-        // For now, it's just a placeholder
-    }
+        function updateSplitOptions() {
+            // This function can be used to update split options when participants change
+            // For now, it's just a placeholder
+        }
 
-    // Calculate total amount automatically
-    function updateTotal() {
-        const subtotal =
-            parseFloat(document.getElementById("subtotal").value) || 0;
-        const tax =
-            parseFloat(document.getElementById("tax_amount").value) || 0;
-        const tip =
-            parseFloat(document.getElementById("tip_amount").value) || 0;
-        const total = subtotal + tax + tip;
+        // Calculate total amount automatically
+        function updateTotal() {
+            const subtotal =
+                parseFloat(document.getElementById("subtotal").value) || 0;
+            const tax =
+                parseFloat(document.getElementById("tax_amount").value) || 0;
+            const tip =
+                parseFloat(document.getElementById("tip_amount").value) || 0;
+            const total = subtotal + tax + tip;
 
-        // You could display this total somewhere if needed
-        console.log("Total:", total);
-    }
+            // You could display this total somewhere if needed
+            console.log("Total:", total);
+        }
 
-    document.getElementById("subtotal").addEventListener("input", updateTotal);
-    document
-        .getElementById("tax_amount")
-        .addEventListener("input", updateTotal);
-    document
-        .getElementById("tip_amount")
-        .addEventListener("input", updateTotal);
-</script>
-{% endblock %}
+        document
+            .getElementById("subtotal")
+            .addEventListener("input", updateTotal);
+        document
+            .getElementById("tax_amount")
+            .addEventListener("input", updateTotal);
+        document
+            .getElementById("tip_amount")
+            .addEventListener("input", updateTotal);
+    </script>
+    {% endblock %}
+</div>

@@ -1,0 +1,217 @@
+{% extends "base.html" %} {% block title %}Edit Bill - {{ bill.title }} - Bill
+Split{% endblock %} {% block content %}
+<h2>Edit Bill: {{ bill.title }}</h2>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+    <div class="form-group">
+        <label for="title">Bill Title *</label>
+        <input type="text" id="title" name="title" value="{{ bill.title }}" required />
+    </div>
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="3">{{ bill.description or '' }}</textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="subtotal">Subtotal *</label>
+        <input
+            type="number"
+            id="subtotal"
+            name="subtotal"
+            step="0.01"
+            min="0"
+            value="{{ '%.2f'|format(bill.subtotal) }}"
+            required
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="tax_amount">Tax Amount</label>
+        <input
+            type="number"
+            id="tax_amount"
+            name="tax_amount"
+            step="0.01"
+            min="0"
+            value="{{ '%.2f'|format(bill.tax_amount) }}"
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="tip_amount">Tip Amount</label>
+        <input
+            type="number"
+            id="tip_amount"
+            name="tip_amount"
+            step="0.01"
+            min="0"
+            value="{{ '%.2f'|format(bill.tip_amount) }}"
+        />
+    </div>
+
+    <div class="form-group">
+        <label for="paid_by">Who Paid the Bill? *</label>
+        <select id="paid_by" name="paid_by" required>
+            <option value="">Select who paid...</option>
+            {% for member in members %}
+            <option value="{{ member.id }}" {% if member.id == bill.paid_by %}selected{% endif %}>{{ member.name }}</option>
+            {% endfor %}
+        </select>
+        <small style="color: #666; display: block; margin-top: 5px;">
+            This person will be owed money by the other participants
+        </small>
+    </div>
+
+    <div class="form-group">
+        <label for="split_method">Split Method</label>
+        <select
+            id="split_method"
+            name="split_method"
+            onchange="toggleSplitOptions()"
+        >
+            <option value="equal" {% if bill.split_method == 'equal' %}selected{% endif %}>Split Equally</option>
+            <option value="itemized" {% if bill.split_method == 'itemized' %}selected{% endif %}>Itemized (by items)</option>
+            <option value="percentage" {% if bill.split_method == 'percentage' %}selected{% endif %}>By Percentage</option>
+            <option value="custom" {% if bill.split_method == 'custom' %}selected{% endif %}>Custom Amounts</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Participants *</label>
+        <div class="participants-list">
+            {% for member in members %}
+            <div class="participant-item">
+                <label>
+                    <input
+                        type="checkbox"
+                        name="participants"
+                        value="{{ member.id }}"
+                        {% if member.id in current_participants %}checked{% endif %}
+                    />
+                    {{ member.name }}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Items section (for itemized bills) -->
+    <div id="items_section" style="display: {% if bill.split_method == 'itemized' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+            <label>Items</label>
+            <div id="items_container">
+                {% if bill.items %}
+                    {% for item in bill.items %}
+                    <div class="item-row">
+                        <input type="text" name="item_name" placeholder="Item name" style="width: 30%;" value="{{ item.name }}">
+                        <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;" value="{{ '%.2f'|format(item.price) }}">
+                        <input type="number" name="item_quantity" placeholder="Qty" min="1" value="{{ item.quantity }}" style="width: 15%;">
+                        <label><input type="checkbox" name="item_shared" value="{{ loop.index0 }}" {% if item.is_shared %}checked{% endif %}> Shared</label>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="item-row">
+                    <input type="text" name="item_name" placeholder="Item name" style="width: 30%;">
+                    <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;">
+                    <input type="number" name="item_quantity" placeholder="Qty" min="1" value="1" style="width: 15%;">
+                    <label><input type="checkbox" name="item_shared" value="0"> Shared</label>
+                </div>
+                {% endif %}
+            </div>
+            <button type="button" onclick="addItem()">Add Another Item</button>
+        </div>
+    </div>
+
+    <!-- Percentage section (for percentage bills) -->
+    <div id="percentage_section" style="display: {% if bill.split_method == 'percentage' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+            <label>Percentage Split</label>
+            {% for member in members %}
+            <div style="margin-bottom: 10px;">
+                <label for="percentage_{{ member.id }}">{{ member.name }}:</label>
+                <input
+                    type="number"
+                    id="percentage_{{ member.id }}"
+                    name="percentage_{{ member.id }}"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="%"
+                    style="width: 80px;"
+                />
+                <span>%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Custom amounts section -->
+    <div id="custom_section" style="display: {% if bill.split_method == 'custom' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+            <label>Custom Amounts</label>
+            {% for member in members %}
+            <div style="margin-bottom: 10px;">
+                <label for="custom_amount_{{ member.id }}">{{ member.name }}:</label>
+                <input
+                    type="number"
+                    id="custom_amount_{{ member.id }}"
+                    name="custom_amount_{{ member.id }}"
+                    min="0"
+                    step="0.01"
+                    placeholder="$"
+                    style="width: 100px;"
+                />
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <button type="submit" class="btn">Update Bill</button>
+    <a href="/groups/{{ group.id }}" class="btn btn-secondary">Cancel</a>
+</form>
+
+<script>
+    let itemCount = {{ bill.items|length if bill.items else 1 }};
+
+    function toggleSplitOptions() {
+        const method = document.getElementById("split_method").value;
+        
+        // Hide all sections
+        document.getElementById("items_section").style.display = "none";
+        document.getElementById("percentage_section").style.display = "none";
+        document.getElementById("custom_section").style.display = "none";
+        
+        // Show relevant section
+        if (method === "itemized") {
+            document.getElementById("items_section").style.display = "block";
+        } else if (method === "percentage") {
+            document.getElementById("percentage_section").style.display = "block";
+        } else if (method === "custom") {
+            document.getElementById("custom_section").style.display = "block";
+        }
+    }
+
+    function addItem() {
+        const container = document.getElementById("items_container");
+        const newItem = document.createElement("div");
+        newItem.className = "item-row";
+        newItem.innerHTML = `
+            <input type="text" name="item_name" placeholder="Item name" style="width: 30%;">
+            <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;">
+            <input type="number" name="item_quantity" placeholder="Qty" min="1" value="1" style="width: 15%;">
+            <label><input type="checkbox" name="item_shared" value="${itemCount}"> Shared</label>
+        `;
+        container.appendChild(newItem);
+        itemCount++;
+    }
+
+    // Initialize the form based on current split method
+    toggleSplitOptions();
+</script>
+
+{% endblock %}
