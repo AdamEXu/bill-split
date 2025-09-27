@@ -18,6 +18,33 @@ Split{% endblock %} {% block content %}
     </div>
 
     <div class="form-group">
+        <label for="receipt_image">Upload Receipt (Optional)</label>
+        <input
+            type="file"
+            id="receipt_image"
+            name="receipt_image"
+            accept="image/*"
+            onchange="handleReceiptUpload(this)"
+        />
+        <small style="color: #666; display: block; margin-top: 5px">
+            Upload a receipt image to automatically extract bill details using
+            AI
+        </small>
+        <div id="receipt_status" style="margin-top: 10px; display: none">
+            <div id="receipt_loading" style="display: none; color: #007bff">
+                🤖 Analyzing receipt with AI...
+            </div>
+            <div id="receipt_success" style="display: none; color: #28a745">
+                ✅ Receipt processed successfully! Form fields have been
+                populated.
+            </div>
+            <div id="receipt_error" style="display: none; color: #dc3545">
+                ❌ <span id="receipt_error_message"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-group">
         <label for="subtotal">Subtotal ($) *</label>
         <input
             type="number"
@@ -153,6 +180,146 @@ Split{% endblock %} {% block content %}
 
 <script>
     let itemCount = 1;
+
+    function handleReceiptUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        // Show loading state
+        showReceiptStatus("loading");
+
+        // Create FormData to send the file
+        const formData = new FormData();
+        formData.append("receipt_image", file);
+
+        // Send to backend for processing
+        fetch("/api/parse-receipt", {
+            method: "POST",
+            body: formData,
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.success) {
+                    // Populate form fields with parsed data
+                    populateFormFromReceipt(data.data);
+                    showReceiptStatus("success");
+                } else {
+                    showReceiptStatus(
+                        "error",
+                        data.error || "Failed to process receipt"
+                    );
+                }
+            })
+            .catch((error) => {
+                console.error("Error:", error);
+                showReceiptStatus(
+                    "error",
+                    "Network error occurred while processing receipt"
+                );
+            });
+    }
+
+    function showReceiptStatus(type, message = "") {
+        const statusDiv = document.getElementById("receipt_status");
+        const loadingDiv = document.getElementById("receipt_loading");
+        const successDiv = document.getElementById("receipt_success");
+        const errorDiv = document.getElementById("receipt_error");
+        const errorMessage = document.getElementById("receipt_error_message");
+
+        // Hide all status divs first
+        loadingDiv.style.display = "none";
+        successDiv.style.display = "none";
+        errorDiv.style.display = "none";
+
+        // Show the appropriate status
+        statusDiv.style.display = "block";
+
+        if (type === "loading") {
+            loadingDiv.style.display = "block";
+        } else if (type === "success") {
+            successDiv.style.display = "block";
+        } else if (type === "error") {
+            errorDiv.style.display = "block";
+            errorMessage.textContent = message;
+        }
+    }
+
+    function populateFormFromReceipt(data) {
+        // Populate basic fields
+        if (data.title) {
+            document.getElementById("title").value = data.title;
+        }
+
+        if (data.subtotal) {
+            document.getElementById("subtotal").value =
+                data.subtotal.toFixed(2);
+        }
+
+        if (data.tax_amount) {
+            document.getElementById("tax_amount").value =
+                data.tax_amount.toFixed(2);
+        }
+
+        if (data.tip_amount) {
+            document.getElementById("tip_amount").value =
+                data.tip_amount.toFixed(2);
+        }
+
+        // If items are present, switch to itemized split and populate items
+        if (data.items && data.items.length > 0) {
+            document.getElementById("split_method").value = "itemized";
+            toggleSplitOptions(); // Show items section
+
+            // Clear existing items
+            const container = document.getElementById("items_container");
+            container.innerHTML = "";
+
+            // Add each item
+            data.items.forEach((item, index) => {
+                if (index === 0) {
+                    // Use the first item row that already exists
+                    const firstRow = document.createElement("div");
+                    firstRow.className = "item-row";
+                    firstRow.innerHTML = `
+                        <input type="text" name="item_name" placeholder="Item name" style="width: 30%;" value="${
+                            item.name
+                        }">
+                        <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;" value="${item.price.toFixed(
+                            2
+                        )}">
+                        <input type="number" name="item_quantity" placeholder="Qty" min="1" value="${
+                            item.quantity
+                        }" style="width: 15%;">
+                        <label><input type="checkbox" name="item_shared" value="0"> Shared</label>
+                    `;
+                    container.appendChild(firstRow);
+                } else {
+                    // Add additional items
+                    const newItem = document.createElement("div");
+                    newItem.className = "item-row";
+                    newItem.innerHTML = `
+                        <input type="text" name="item_name" placeholder="Item name" style="width: 30%;" value="${
+                            item.name
+                        }">
+                        <input type="number" name="item_price" placeholder="Price" step="0.01" min="0" style="width: 20%;" value="${item.price.toFixed(
+                            2
+                        )}">
+                        <input type="number" name="item_quantity" placeholder="Qty" min="1" value="${
+                            item.quantity
+                        }" style="width: 15%;">
+                        <label><input type="checkbox" name="item_shared" value="${index}"> Shared</label>
+                        <button type="button" onclick="removeItem(this)">Remove</button>
+                    `;
+                    container.appendChild(newItem);
+                }
+            });
+
+            itemCount = data.items.length;
+        }
+
+        // Update total calculation
+        updateTotal();
+    }
 
     function toggleSplitOptions() {
         const splitMethod = document.getElementById("split_method").value;

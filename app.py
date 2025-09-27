@@ -6,6 +6,9 @@ import os
 from dotenv import load_dotenv
 import uuid
 from datetime import datetime
+import openai
+import base64
+import json
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +24,9 @@ db = SQLAlchemy(app)
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+
+# OpenAI configuration
+openai_client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 # Database Models
@@ -259,6 +265,157 @@ def update_debt_tracking(group_id, bill, splits):
                     amount=amount_owed,
                 )
                 db.session.add(debt)
+
+
+def parse_receipt_with_ai(image_file):
+    """
+    Parse a receipt image using OpenAI's GPT-5 vision capabilities.
+
+    Args:
+        image_file: File object containing the receipt image
+
+    Returns:
+        dict: Parsed receipt data with structure:
+        {
+            'success': bool,
+            'data': {
+                'title': str,
+                'subtotal': float,
+                'tax_amount': float,
+                'tip_amount': float,
+                'total_amount': float,
+                'items': [
+                    {
+                        'name': str,
+                        'price': float,
+                        'quantity': int
+                    }
+                ]
+            },
+            'error': str (if success is False)
+        }
+    """
+    try:
+        # Read and encode the image
+        image_data = image_file.read()
+        image_base64 = base64.b64encode(image_data).decode("utf-8")
+
+        # Create the prompt for structured receipt parsing
+        prompt = """
+        Please analyze this receipt image and extract the following information in JSON format:
+
+        {
+            "title": "Restaurant/Store name or descriptive title",
+            "subtotal": 0.00,
+            "tax_amount": 0.00,
+            "tip_amount": 0.00,
+            "total_amount": 0.00,
+            "items": [
+                {
+                    "name": "Item name",
+                    "price": 0.00,
+                    "quantity": 1
+                }
+            ]
+        }
+
+        Instructions:
+        - Extract the exact amounts as numbers (no currency symbols)
+        - If tip is not shown, set tip_amount to 0.00
+        - If tax is not shown separately, set tax_amount to 0.00
+        - For items, extract individual line items with their prices
+        - If quantity is not specified, assume 1
+        - If you can't find subtotal, calculate it from items total
+        - Ensure total_amount = subtotal + tax_amount + tip_amount
+        - Use a descriptive title based on the restaurant/store name
+        - Return only valid JSON, no additional text
+        """
+
+        # Make the API call to GPT-5 with vision
+        response = openai_client.chat.completions.create(
+            model="gpt-5",  # Using the latest GPT-5 model
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}",
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                }
+            ],
+            max_completion_tokens=1000,  # GPT-5 uses max_completion_tokens instead of max_tokens
+            # Note: GPT-5 only supports default temperature of 1, so we omit the temperature parameter
+        )
+
+        # Parse the response
+        content = response.choices[0].message.content.strip()
+
+        # Try to extract JSON from the response
+        try:
+            # Remove any markdown code blocks if present
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            parsed_data = json.loads(content)
+
+            # Validate the parsed data structure
+            required_fields = [
+                "title",
+                "subtotal",
+                "tax_amount",
+                "tip_amount",
+                "total_amount",
+                "items",
+            ]
+            for field in required_fields:
+                if field not in parsed_data:
+                    return {
+                        "success": False,
+                        "error": f"Missing required field: {field}",
+                    }
+
+            # Ensure numeric fields are floats
+            for field in ["subtotal", "tax_amount", "tip_amount", "total_amount"]:
+                try:
+                    parsed_data[field] = float(parsed_data[field])
+                except (ValueError, TypeError):
+                    parsed_data[field] = 0.0
+
+            # Validate and clean items
+            if not isinstance(parsed_data["items"], list):
+                parsed_data["items"] = []
+
+            cleaned_items = []
+            for item in parsed_data["items"]:
+                if isinstance(item, dict) and "name" in item and "price" in item:
+                    cleaned_item = {
+                        "name": str(item["name"]),
+                        "price": float(item.get("price", 0.0)),
+                        "quantity": int(item.get("quantity", 1)),
+                    }
+                    cleaned_items.append(cleaned_item)
+
+            parsed_data["items"] = cleaned_items
+
+            return {"success": True, "data": parsed_data}
+
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"Failed to parse AI response as JSON: {str(e)}",
+            }
+
+    except Exception as e:
+        return {"success": False, "error": f"Error processing receipt: {str(e)}"}
 
 
 # Routes
@@ -1161,6 +1318,46 @@ def api_get_group_debts(group_id):
             for debt, _, _ in debts
         ]
     )
+
+
+@app.route("/api/parse-receipt", methods=["POST"])
+def api_parse_receipt():
+    """API endpoint to parse receipt images using OpenAI vision"""
+    user = get_current_user()
+    if not user:
+        return jsonify({"success": False, "error": "Not authenticated"}), 401
+
+    # Check if file was uploaded
+    if "receipt_image" not in request.files:
+        return jsonify({"success": False, "error": "No receipt image provided"}), 400
+
+    file = request.files["receipt_image"]
+    if file.filename == "":
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    # Validate file type
+    allowed_extensions = {"png", "jpg", "jpeg", "gif", "webp"}
+    if not (
+        "." in file.filename
+        and file.filename.rsplit(".", 1)[1].lower() in allowed_extensions
+    ):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Invalid file type. Please upload an image.",
+                }
+            ),
+            400,
+        )
+
+    try:
+        # Parse the receipt using our AI function
+        result = parse_receipt_with_ai(file)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
 
 # Initialize database
