@@ -1,171 +1,131 @@
-{% extends "base.html" %} {% block title %}Create Bill - {{ group.name }} - Bill
-Split{% endblock %} {% block content %}
-<h2>Create New Bill for {{ group.name }}</h2>
+{% extends "base.html" %}
 
-{% if error %}
-<div class="error">{{ error }}</div>
-{% endif %}
+{% block title %}Create Bill - {{ group.name }} - Bill Split{% endblock %}
 
-<!-- Tab Navigation -->
-<div class="tab-container">
-    <div class="tab-buttons">
-        <button
-            type="button"
-            class="tab-button active"
-            onclick="switchTab('ai-entry')"
-        >
-            🤖 AI Entry
-        </button>
-        <button
-            type="button"
-            class="tab-button"
-            onclick="switchTab('manual-entry')"
-        >
-            ✏️ Manual Entry
-        </button>
-    </div>
-</div>
+{% block content %}
+<div class="form-page">
+    <div class="form-container" style="max-width: 800px;">
+        <h1 class="form-title md-headline-medium">
+            <span class="material-icons md-24">receipt_long</span>
+            Create New Bill for {{ group.name }}
+        </h1>
 
-<!-- AI Entry Tab -->
-<div id="ai-entry" class="tab-content active">
-    <div class="ai-upload-section">
-        <h3>Upload Receipt for AI Processing</h3>
-        <p>
-            Upload a receipt image and let AI automatically extract all the
-            details for you!
-        </p>
-
-        <div class="upload-area">
-            <input
-                type="file"
-                id="ai_receipt_image"
-                accept="image/*"
-                onchange="handleAIReceiptUpload(this)"
-            />
-            <label for="ai_receipt_image" class="upload-label">
-                📄 Choose Receipt Image
-            </label>
+        {% if error %}
+        <div class="md-alert md-alert--error">
+            <span class="material-icons md-18">error</span>
+            {{ error }}
         </div>
+        {% endif %}
 
-        <div id="ai_status" style="margin-top: 20px; display: none">
-            <div
-                id="ai_loading"
-                style="
-                    display: none;
-                    color: #007bff;
-                    text-align: center;
-                    padding: 20px;
-                "
-            >
-                <div class="spinner"></div>
-                🤖 AI is analyzing your receipt...<br />
-                <small>This may take a few seconds</small>
-            </div>
-            <div
-                id="ai_success"
-                style="
-                    display: none;
-                    color: #28a745;
-                    text-align: center;
-                    padding: 20px;
-                "
-            >
-                ✅ Receipt processed successfully!<br />
-                <small>Switching to manual entry for review...</small>
-            </div>
-            <div
-                id="ai_error"
-                style="
-                    display: none;
-                    color: #dc3545;
-                    text-align: center;
-                    padding: 20px;
-                "
-            >
-                ❌ <span id="ai_error_message"></span><br />
-                <small>Please try again or switch to manual entry</small>
+        <!-- Tab Navigation -->
+        <div class="md-tabs">
+            <div class="md-tabs__list">
+                <button type="button" class="md-tab md-tab--active" onclick="switchTab('ai-entry')">
+                    <span class="material-icons md-18">smart_toy</span>
+                    AI Entry
+                </button>
+                <button type="button" class="md-tab" onclick="switchTab('manual-entry')">
+                    <span class="material-icons md-18">edit</span>
+                    Manual Entry
+                </button>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Manual Entry Tab -->
-<div id="manual-entry" class="tab-content">
-    <form method="POST">
-        <div class="form-group">
-            <label for="title">Bill Title *</label>
-            <input type="text" id="title" name="title" required />
+        <!-- AI Entry Tab -->
+        <div id="ai-entry" class="md-tab-content md-tab-content--active">
+            <div class="md-card md-mt-lg">
+                <h3 class="md-title-large md-mb-md">
+                    <span class="material-icons md-24">smart_toy</span>
+                    Upload Receipt for AI Processing
+                </h3>
+                <p class="md-body-large md-mb-lg">
+                    Upload a receipt image and let AI automatically extract all the details for you!
+                </p>
+
+                <div class="upload-area md-card md-card--outlined md-text-center md-p-xl" style="border: 2px dashed var(--md-outline); cursor: pointer;">
+                    <input type="file" id="ai_receipt_image" accept="image/*" onchange="handleAIReceiptUpload(this)" style="display: none;" />
+                    <label for="ai_receipt_image" style="cursor: pointer; display: block;">
+                        <span class="material-icons md-48 md-text-primary md-mb-md">cloud_upload</span>
+                        <div class="md-title-medium md-mb-sm">Choose Receipt Image</div>
+                        <div class="md-body-medium md-text-on-surface-variant">Drag and drop or click to select</div>
+                    </label>
+                </div>
+
+                <div id="ai_status" class="md-mt-lg" style="display: none;">
+                    <div id="ai_loading" class="md-alert md-alert--info md-text-center" style="display: none;">
+                        <div class="md-flex md-flex--center md-flex--align-center md-mb-sm">
+                            <div class="md-spinner md-mr-sm"></div>
+                            <span class="material-icons md-24">smart_toy</span>
+                        </div>
+                        <div class="md-title-medium">AI is analyzing your receipt...</div>
+                        <div class="md-body-small">This may take a few seconds</div>
+                    </div>
+                    <div id="ai_success" class="md-alert md-alert--success md-text-center" style="display: none;">
+                        <span class="material-icons md-24 md-mb-sm">check_circle</span>
+                        <div class="md-title-medium">Receipt processed successfully!</div>
+                        <div class="md-body-small">Switching to manual entry for review...</div>
+                    </div>
+                    <div id="ai_error" class="md-alert md-alert--error md-text-center" style="display: none;">
+                        <span class="material-icons md-24 md-mb-sm">error</span>
+                        <div class="md-title-medium"><span id="ai_error_message"></span></div>
+                        <div class="md-body-small">Please try again or switch to manual entry</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="form-group">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="3"></textarea>
-        </div>
+        <!-- Manual Entry Tab -->
+        <div id="manual-entry" class="md-tab-content">
+            <form method="POST">
+                <div class="md-form-field">
+                    <label for="title" class="md-form-field__label md-form-field__label--required">Bill Title</label>
+                    <input type="text" id="title" name="title" class="md-text-field" required />
+                </div>
 
+                <div class="md-form-field">
+                    <label for="description" class="md-form-field__label">Description</label>
+                    <textarea id="description" name="description" rows="3" class="md-text-field"></textarea>
+                </div>
 
+                <div class="md-grid md-grid--2-col">
+                    <div class="md-form-field">
+                        <label for="subtotal" class="md-form-field__label md-form-field__label--required">Subtotal ($)</label>
+                        <input type="number" id="subtotal" name="subtotal" step="0.01" min="0" class="md-text-field" required />
+                    </div>
 
-        <div class="form-group">
-            <label for="subtotal">Subtotal ($) *</label>
-            <input
-                type="number"
-                id="subtotal"
-                name="subtotal"
-                step="0.01"
-                min="0"
-                required
-            />
-        </div>
+                    <div class="md-form-field">
+                        <label for="tax_amount" class="md-form-field__label">Tax Amount ($)</label>
+                        <input type="number" id="tax_amount" name="tax_amount" step="0.01" min="0" value="0" class="md-text-field" />
+                    </div>
 
-        <div class="form-group">
-            <label for="tax_amount">Tax Amount ($)</label>
-            <input
-                type="number"
-                id="tax_amount"
-                name="tax_amount"
-                step="0.01"
-                min="0"
-                value="0"
-            />
-        </div>
+                    <div class="md-form-field">
+                        <label for="tip_amount" class="md-form-field__label">Tip Amount ($)</label>
+                        <input type="number" id="tip_amount" name="tip_amount" step="0.01" min="0" value="0" class="md-text-field" />
+                    </div>
+                </div>
 
-        <div class="form-group">
-            <label for="tip_amount">Tip Amount ($)</label>
-            <input
-                type="number"
-                id="tip_amount"
-                name="tip_amount"
-                step="0.01"
-                min="0"
-                value="0"
-            />
-        </div>
+                <div class="md-form-field">
+                    <label for="paid_by" class="md-form-field__label md-form-field__label--required">Who Paid the Bill?</label>
+                    <select id="paid_by" name="paid_by" class="md-select" required>
+                        <option value="">Select who paid...</option>
+                        {% for member in members %}
+                        <option value="{{ member.id }}">{{ member.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="md-body-small md-text-on-surface-variant md-mt-xs">
+                        This person will be owed money by the other participants
+                    </small>
+                </div>
 
-        <div class="form-group">
-            <label for="paid_by">Who Paid the Bill? *</label>
-            <select id="paid_by" name="paid_by" required>
-                <option value="">Select who paid...</option>
-                {% for member in members %}
-                <option value="{{ member.id }}">{{ member.name }}</option>
-                {% endfor %}
-            </select>
-            <small style="color: #666; display: block; margin-top: 5px;">
-                This person will be owed money by the other participants
-            </small>
-        </div>
-
-        <div class="form-group">
-            <label for="split_method">Split Method</label>
-            <select
-                id="split_method"
-                name="split_method"
-                onchange="toggleSplitOptions()"
-            >
-                <option value="equal">Split Equally</option>
-                <option value="itemized">Itemized (by items)</option>
-                <option value="percentage">By Percentage</option>
-                <option value="custom">Custom Amounts</option>
-            </select>
-        </div>
+                <div class="md-form-field">
+                    <label for="split_method" class="md-form-field__label">Split Method</label>
+                    <select id="split_method" name="split_method" class="md-select" onchange="toggleSplitOptions()">
+                        <option value="equal">Split Equally</option>
+                        <option value="itemized">Itemized (by items)</option>
+                        <option value="percentage">By Percentage</option>
+                        <option value="custom">Custom Amounts</option>
+                    </select>
+                </div>
 
         <div id="items_section" style="display: none">
             <h4>Items</h4>

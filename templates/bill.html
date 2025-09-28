@@ -1,94 +1,134 @@
-{% extends "base.html" %} {% block title %}{{ bill.title }} - Bill Split{%
-endblock %} {% block content %}
-<div style="margin-bottom: 20px">
-    <h2>{{ bill.title }}</h2>
-    {% if bill.description %}
-    <p>{{ bill.description }}</p>
+{% extends "base.html" %}
+
+{% block title %}{{ bill.title }} - Bill Split{% endblock %}
+
+{% block content %}
+<div class="bill-page">
+    <div class="bill-header">
+        <h1 class="bill-title md-headline-large">{{ bill.title }}</h1>
+        {% if bill.description %}
+        <p class="bill-description">{{ bill.description }}</p>
+        {% endif %}
+
+        <div class="bill-breakdown">
+            <div class="bill-breakdown__row">
+                <span>Subtotal:</span>
+                <strong>${{ "%.2f"|format(bill.subtotal) }}</strong>
+            </div>
+            {% if bill.tax_amount > 0 %}
+            <div class="bill-breakdown__row">
+                <span>Tax:</span>
+                <span>${{ "%.2f"|format(bill.tax_amount) }}</span>
+            </div>
+            {% endif %}
+            {% if bill.tip_amount > 0 %}
+            <div class="bill-breakdown__row">
+                <span>Tip:</span>
+                <span>${{ "%.2f"|format(bill.tip_amount) }}</span>
+            </div>
+            {% endif %}
+            <div class="bill-breakdown__row">
+                <span>Total:</span>
+                <strong>${{ "%.2f"|format(bill.total_amount) }}</strong>
+            </div>
+        </div>
+
+        <div class="bill-meta">
+            <span class="material-icons md-18">schedule</span>
+            Created {{ bill.created_at.strftime('%B %d, %Y') }}
+            <span class="md-ml-lg">
+                <span class="material-icons md-18">splitscreen</span>
+                Split Method: {{ bill.split_method.title() }}
+            </span>
+        </div>
+    </div>
+
+    {% if bill.items %}
+    <div class="md-card md-mt-lg">
+        <h3 class="md-title-large md-mb-md">
+            <span class="material-icons md-24">list</span>
+            Items
+        </h3>
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Quantity</th>
+                        <th>Type</th>
+                        <th class="md-text-right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in bill.items %}
+                    <tr>
+                        <td class="md-body-medium">{{ item.name }}</td>
+                        <td class="md-body-medium">{{ item.quantity }}</td>
+                        <td>
+                            {% if item.is_shared %}
+                            <span class="md-text-primary">
+                                <span class="material-icons md-18">share</span>
+                                Shared
+                            </span>
+                            {% else %}
+                            <span class="md-text-on-surface-variant">Individual</span>
+                            {% endif %}
+                        </td>
+                        <td class="md-text-right md-body-medium">${{ "%.2f"|format(item.price * item.quantity) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
     {% endif %}
 
-    <div class="bill-breakdown">
-        <p><strong>Subtotal: ${{ "%.2f"|format(bill.subtotal) }}</strong></p>
-        {% if bill.tax_amount > 0 %}
-        <p>Tax: ${{ "%.2f"|format(bill.tax_amount) }}</p>
-        {% endif %} {% if bill.tip_amount > 0 %}
-        <p>Tip: ${{ "%.2f"|format(bill.tip_amount) }}</p>
-        {% endif %}
-        <p><strong>Total: ${{ "%.2f"|format(bill.total_amount) }}</strong></p>
-        <p><em>Split Method: {{ bill.split_method.title() }}</em></p>
-    </div>
-
-    <small>Created {{ bill.created_at.strftime('%B %d, %Y') }}</small>
-</div>
-
-{% if bill.items %}
-<h3>Items</h3>
-{% for item in bill.items %}
-<div class="card">
-    <div
-        style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        "
-    >
-        <div>
-            <strong>{{ item.name }}</strong>
-            {% if item.quantity > 1 %}
-            <span>({{ item.quantity }}x)</span>
-            {% endif %} {% if item.is_shared %}
-            <span style="color: #007bff">[Shared]</span>
-            {% endif %}
-        </div>
-        <div>
-            <strong>${{ "%.2f"|format(item.price * item.quantity) }}</strong>
-        </div>
-    </div>
-</div>
-{% endfor %} {% endif %}
-
-<h3>Participants</h3>
-{% for participant, participant_user in participants %}
-<div class="card">
-    <div
-        style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        "
-    >
-        <div class="user-info">
+    <div class="md-card md-mt-lg">
+        <h3 class="md-title-large md-mb-md">
+            <span class="material-icons md-24">people</span>
+            Participants
+        </h3>
+        {% for participant, participant_user in participants %}
+        <div class="member-item">
             {% if participant_user.profile_picture %}
-            <img
-                src="{{ participant_user.profile_picture }}"
-                alt="{{ participant_user.name }}"
-            />
-            {% endif %}
-            <span>{{ participant_user.name }}</span>
-        </div>
-        <div>
-            <strong>${{ "%.2f"|format(participant.amount_owed) }}</strong>
-            {% if participant.paid %}
-            <span style="color: #28a745; margin-left: 10px">✓ Paid</span>
-            {% else %} {% if participant_user.id == user.id %}
-            <button
-                onclick="markPaid('{{ bill.id }}')"
-                class="btn"
-                style="margin-left: 10px"
-            >
-                Mark as Paid
-            </button>
+            <img src="{{ participant_user.profile_picture }}" alt="{{ participant_user.name }}" class="member-avatar">
             {% else %}
-            <span style="color: #dc3545; margin-left: 10px">Unpaid</span>
-            {% endif %} {% endif %}
+            <div class="member-avatar">{{ participant_user.name[0].upper() }}</div>
+            {% endif %}
+            <div class="md-flex md-flex--between md-w-full md-flex--align-center">
+                <span class="member-name">{{ participant_user.name }}</span>
+                <div class="md-flex md-flex--align-center" style="gap: var(--md-spacing-md);">
+                    <strong class="md-title-medium">${{ "%.2f"|format(participant.amount_owed) }}</strong>
+                    {% if participant.paid %}
+                    <span class="md-text-success md-flex md-flex--align-center" style="gap: var(--md-spacing-xs);">
+                        <span class="material-icons md-18">check_circle</span>
+                        Paid
+                    </span>
+                    {% else %}
+                        {% if participant_user.id == user.id %}
+                        <button onclick="markPaid('{{ bill.id }}')" class="md-button md-button--filled md-button--small">
+                            <span class="material-icons md-18">payment</span>
+                            Mark as Paid
+                        </button>
+                        {% else %}
+                        <span class="md-text-error md-flex md-flex--align-center" style="gap: var(--md-spacing-xs);">
+                            <span class="material-icons md-18">schedule</span>
+                            Unpaid
+                        </span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
         </div>
+        {% endfor %}
     </div>
-</div>
-{% endfor %}
 
-<div style="margin-top: 20px">
-    <a href="/groups/{{ bill.group_id }}" class="btn btn-secondary"
-        >Back to Group</a
-    >
+    <div class="bill-actions">
+        <a href="/groups/{{ bill.group_id }}" class="md-button md-button--outlined">
+            <span class="material-icons md-18">arrow_back</span>
+            Back to Group
+        </a>
+    </div>
 </div>
 
 <script>

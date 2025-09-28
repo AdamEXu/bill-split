@@ -1,111 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Bill Split{% endblock %}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        .btn {
-            background: #007bff;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            display: inline-block;
-        }
-        .btn:hover {
-            background: #0056b3;
-        }
-        .btn-secondary {
-            background: #6c757d;
-        }
-        .btn-secondary:hover {
-            background: #545b62;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .form-group input, .form-group textarea, .form-group select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        .error {
-            color: #dc3545;
-            margin-bottom: 15px;
-        }
-        .success {
-            color: #28a745;
-            margin-bottom: 15px;
-        }
-        .card {
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        .card h3 {
-            margin-top: 0;
-        }
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .user-info img {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        {% if user %}
-        <div class="header">
-            <h1><a href="/" style="text-decoration: none; color: inherit;">Bill Split</a></h1>
-            <div class="user-info">
-                {% if user.profile_picture %}
-                <img src="{{ user.profile_picture }}" alt="{{ user.name }}">
-                {% endif %}
-                <span>{{ user.name }}</span>
-                <a href="/logout" class="btn btn-secondary">Logout</a>
-            </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{% block title %}Bill Split{% endblock %}</title>
+
+        <!-- Google Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+            rel="stylesheet"
+        />
+
+        <!-- Material Icons -->
+        <link
+            href="https://fonts.googleapis.com/icon?family=Material+Icons"
+            rel="stylesheet"
+        />
+
+        <!-- Custom CSS -->
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/main.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/components.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/layout.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/pages.css') }}"
+        />
+    </head>
+    <body>
+        <div class="md-layout">
+            {% if user %}
+            <header class="md-layout__header">
+                <nav class="md-navigation">
+                    <div class="md-navigation__container">
+                        <a href="/" class="md-navigation__brand">
+                            <span class="material-icons md-18">receipt</span>
+                            Bill Split
+                        </a>
+                        <div class="md-navigation__user">
+                            {% if user.profile_picture %}
+                            <img
+                                src="{{ user.profile_picture }}"
+                                alt="{{ user.name }}"
+                                class="md-avatar"
+                            />
+                            {% else %}
+                            <div class="md-avatar">
+                                {{ user.name[0].upper() }}
+                            </div>
+                            {% endif %}
+                            <span class="md-body-medium">{{ user.name }}</span>
+                            <a
+                                href="/settings"
+                                class="md-button md-button--outlined md-button--small"
+                            >
+                                <span class="material-icons md-18"
+                                    >settings</span
+                                >
+                                Settings
+                            </a>
+                            <a
+                                href="/logout"
+                                class="md-button md-button--outlined md-button--small"
+                            >
+                                <span class="material-icons md-18">logout</span>
+                                Logout
+                            </a>
+                        </div>
+                    </div>
+                </nav>
+            </header>
+            {% endif %}
+
+            <main class="md-layout__main">
+                <div class="md-container">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
         </div>
-        {% endif %}
-        
-        {% block content %}{% endblock %}
-    </div>
-</body>
+    </body>
 </html>

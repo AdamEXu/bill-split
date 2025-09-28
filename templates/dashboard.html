@@ -3,26 +3,42 @@
 {% block title %}Dashboard - Bill Split{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h2>Your Groups</h2>
-    <a href="/groups/create" class="btn">Create New Group</a>
-</div>
+<div class="dashboard-page">
+    <div class="dashboard-header">
+        <h1 class="dashboard-title md-headline-large">Your Groups</h1>
+        <a href="/groups/create" class="md-button md-button--filled">
+            <span class="material-icons md-18">add</span>
+            Create New Group
+        </a>
+    </div>
 
-{% if groups %}
-    {% for group in groups %}
-    <div class="card">
-        <h3><a href="/groups/{{ group.id }}" style="text-decoration: none; color: inherit;">{{ group.name }}</a></h3>
-        {% if group.description %}
-        <p>{{ group.description }}</p>
-        {% endif %}
-        <small>Created {{ group.created_at.strftime('%B %d, %Y') }}</small>
-    </div>
-    {% endfor %}
-{% else %}
-    <div class="card">
-        <h3>No groups yet</h3>
-        <p>Create your first group to start splitting bills with friends!</p>
-        <a href="/groups/create" class="btn">Create Your First Group</a>
-    </div>
-{% endif %}
+    {% if groups %}
+        <div class="groups-grid">
+            {% for group in groups %}
+            <a href="/groups/{{ group.id }}" class="group-card">
+                <h3 class="group-card__title">{{ group.name }}</h3>
+                {% if group.description %}
+                <p class="group-card__description">{{ group.description }}</p>
+                {% endif %}
+                <div class="group-card__meta">
+                    <span class="material-icons md-18">schedule</span>
+                    Created {{ group.created_at.strftime('%B %d, %Y') }}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="md-card empty-state">
+            <div class="empty-state__icon">
+                <span class="material-icons">group</span>
+            </div>
+            <h3 class="empty-state__title">No groups yet</h3>
+            <p class="empty-state__description">Create your first group to start splitting bills with friends!</p>
+            <a href="/groups/create" class="md-button md-button--filled">
+                <span class="material-icons md-18">add</span>
+                Create Your First Group
+            </a>
+        </div>
+    {% endif %}
+</div>
 {% endblock %}

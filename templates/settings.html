@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Bill Split</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .header h1 a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .user-info a {
+            color: rgba(255,255,255,0.9);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.1);
+            transition: background 0.3s;
+        }
+
+        .user-info a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+
+        .checkbox-group:hover {
+            border-color: #667eea;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #667eea;
+        }
+
+        .checkbox-group .checkbox-label {
+            flex: 1;
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .checkbox-group .checkbox-description {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1><a href="/">Bill Split</a></h1>
+            <div class="user-info">
+                <img src="{{ user.profile_picture or '/static/default-avatar.png' }}" alt="{{ user.name }}">
+                <span>{{ user.name }}</span>
+                <a href="/logout">Logout</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+        
+        <div class="card">
+            <h2>Email Notification Settings</h2>
+            
+            {% if success %}
+            <div class="success-message">
+                {{ success }}
+            </div>
+            {% endif %}
+            
+            <form method="POST">
+                <div class="form-group">
+                    <label>Choose which email notifications you'd like to receive:</label>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notify_bill_created" name="notify_bill_created" 
+                               {% if user.notify_bill_created %}checked{% endif %}>
+                        <div>
+                            <label for="notify_bill_created" class="checkbox-label">New Bill Created</label>
+                            <div class="checkbox-description">Get notified when someone creates a new bill in your groups</div>
+                        </div>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notify_bill_edited" name="notify_bill_edited" 
+                               {% if user.notify_bill_edited %}checked{% endif %}>
+                        <div>
+                            <label for="notify_bill_edited" class="checkbox-label">Bill Updated</label>
+                            <div class="checkbox-description">Get notified when bills are modified or updated</div>
+                        </div>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notify_bill_deleted" name="notify_bill_deleted" 
+                               {% if user.notify_bill_deleted %}checked{% endif %}>
+                        <div>
+                            <label for="notify_bill_deleted" class="checkbox-label">Bill Deleted</label>
+                            <div class="checkbox-description">Get notified when bills are deleted from your groups</div>
+                        </div>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="notify_group_invites" name="notify_group_invites" 
+                               {% if user.notify_group_invites %}checked{% endif %}>
+                        <div>
+                            <label for="notify_group_invites" class="checkbox-label">Group Invitations</label>
+                            <div class="checkbox-description">Get notified when you're added to groups or receive invitations</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn">Save Settings</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

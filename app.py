@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
 from urllib.parse import urlencode
 import requests
 import os
@@ -38,8 +39,17 @@ app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///billsplit.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Initialize database
+# Mail configuration
+app.config["MAIL_SERVER"] = "smtp.gmail.com"
+app.config["MAIL_PORT"] = 587
+app.config["MAIL_USE_TLS"] = True
+app.config["MAIL_USERNAME"] = os.environ.get("GMAIL_USERNAME")
+app.config["MAIL_PASSWORD"] = os.environ.get("GMAIL_PASSWORD")
+app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("GMAIL_USERNAME")
+
+# Initialize database and mail
 db = SQLAlchemy(app)
+mail = Mail(app)
 
 # Google OAuth configuration
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
@@ -56,6 +66,12 @@ class User(db.Model):
     name = db.Column(db.String(100), nullable=False)
     profile_picture = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Email notification preferences
+    notify_bill_created = db.Column(db.Boolean, default=True)
+    notify_bill_edited = db.Column(db.Boolean, default=True)
+    notify_bill_deleted = db.Column(db.Boolean, default=True)
+    notify_group_invites = db.Column(db.Boolean, default=True)
 
     # Relationships
     group_memberships = db.relationship("GroupMember", backref="user", lazy=True)
@@ -169,6 +185,24 @@ class MobileToken(db.Model):
     user_id = db.Column(db.String(50), db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     expires_at = db.Column(db.DateTime, nullable=True)  # For future token expiration
+
+
+class PendingInvitation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.String(50), db.ForeignKey("group.id"), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    invited_by = db.Column(db.String(50), db.ForeignKey("user.id"), nullable=False)
+    invitation_token = db.Column(db.String(100), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(
+        db.DateTime, nullable=False
+    )  # Invitations expire after 7 days
+
+    # Relationships
+    group = db.relationship("Group", backref="pending_invitations")
+    inviter = db.relationship("User", backref="sent_invitations")
+
+    __table_args__ = (db.UniqueConstraint("group_id", "email"),)
 
 
 # Helper functions
@@ -291,6 +325,152 @@ def update_debt_tracking(group_id, bill, splits):
                     amount=amount_owed,
                 )
                 db.session.add(debt)
+
+
+def send_email_notification(to_email, subject, html_body, text_body=None):
+    """Send an email notification using Flask-Mail"""
+    try:
+        msg = Message(
+            subject=subject,
+            recipients=[to_email],
+            html=html_body,
+            body=text_body or html_body,
+        )
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Failed to send email to {to_email}: {str(e)}")
+        return False
+
+
+def notify_bill_created(bill, participants):
+    """Send notifications when a new bill is created"""
+    group = Group.query.get(bill.group_id)
+    creator = User.query.get(bill.created_by)
+
+    subject = f"New Bill: {bill.title} in {group.name}"
+
+    for participant in participants:
+        if participant.id != bill.created_by:  # Don't notify the creator
+            user = User.query.get(participant.id)
+            if user and user.email and user.notify_bill_created:  # Check preference
+                amount_owed = next(
+                    (p.amount_owed for p in bill.participants if p.user_id == user.id),
+                    0,
+                )
+
+                html_body = f"""
+                <h2>New Bill Created</h2>
+                <p>Hi {user.name},</p>
+                <p><strong>{creator.name}</strong> created a new bill in the group <strong>{group.name}</strong>:</p>
+
+                <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                    <h3>{bill.title}</h3>
+                    {f'<p>{bill.description}</p>' if bill.description else ''}
+                    <p><strong>Total Amount:</strong> ${bill.total_amount:.2f}</p>
+                    <p><strong>Your Share:</strong> ${amount_owed:.2f}</p>
+                    <p><strong>Split Method:</strong> {bill.split_method.title()}</p>
+                </div>
+
+                <p>You can view the full bill details by logging into the Bill Split app.</p>
+                <p><small>You can disable these notifications in your <a href="/settings">account settings</a>.</small></p>
+                <p>Best regards,<br>Bill Split Team</p>
+                """
+
+                send_email_notification(user.email, subject, html_body)
+
+
+def notify_bill_edited(bill, participants):
+    """Send notifications when a bill is edited"""
+    group = Group.query.get(bill.group_id)
+
+    subject = f"Bill Updated: {bill.title} in {group.name}"
+
+    for participant in participants:
+        user = User.query.get(participant.id)
+        if user and user.email and user.notify_bill_edited:  # Check preference
+            amount_owed = next(
+                (p.amount_owed for p in bill.participants if p.user_id == user.id), 0
+            )
+
+            html_body = f"""
+            <h2>Bill Updated</h2>
+            <p>Hi {user.name},</p>
+            <p>A bill in the group <strong>{group.name}</strong> has been updated:</p>
+
+            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                <h3>{bill.title}</h3>
+                {f'<p>{bill.description}</p>' if bill.description else ''}
+                <p><strong>Total Amount:</strong> ${bill.total_amount:.2f}</p>
+                <p><strong>Your Share:</strong> ${amount_owed:.2f}</p>
+                <p><strong>Split Method:</strong> {bill.split_method.title()}</p>
+            </div>
+
+            <p>You can view the updated bill details by logging into the Bill Split app.</p>
+            <p><small>You can disable these notifications in your <a href="/settings">account settings</a>.</small></p>
+            <p>Best regards,<br>Bill Split Team</p>
+            """
+
+            send_email_notification(user.email, subject, html_body)
+
+
+def notify_bill_deleted(bill_title, group_name, participants):
+    """Send notifications when a bill is deleted"""
+    subject = f"Bill Deleted: {bill_title} in {group_name}"
+
+    for participant in participants:
+        user = User.query.get(participant["user_id"])
+        if user and user.email and user.notify_bill_deleted:  # Check preference
+            html_body = f"""
+            <h2>Bill Deleted</h2>
+            <p>Hi {user.name},</p>
+            <p>A bill has been deleted from the group <strong>{group_name}</strong>:</p>
+
+            <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                <h3>{bill_title}</h3>
+                <p><strong>Your Share Was:</strong> ${participant['amount_owed']:.2f}</p>
+            </div>
+
+            <p>All debts related to this bill have been removed from your account.</p>
+            <p><small>You can disable these notifications in your <a href="/settings">account settings</a>.</small></p>
+            <p>Best regards,<br>Bill Split Team</p>
+            """
+
+            send_email_notification(user.email, subject, html_body)
+
+
+def notify_group_invitation(group, inviter, invitee_email, invitation_token):
+    """Send invitation email to join a group"""
+    subject = f"You're invited to join '{group.name}' on Bill Split"
+
+    # Create invitation link
+    invitation_link = f"http://127.0.0.1:5001/accept-invitation/{invitation_token}"
+
+    html_body = f"""
+    <h2>Group Invitation</h2>
+    <p>Hi there!</p>
+    <p><strong>{inviter.name}</strong> has invited you to join the group <strong>"{group.name}"</strong> on Bill Split.</p>
+
+    {f'<p><em>{group.description}</em></p>' if group.description else ''}
+
+    <div style="border: 1px solid #ddd; padding: 15px; margin: 20px 0; border-radius: 5px; background-color: #f9f9f9;">
+        <p><strong>What is Bill Split?</strong></p>
+        <p>Bill Split makes it easy to share expenses with friends, family, and roommates. Split bills, track who owes what, and settle up with ease!</p>
+    </div>
+
+    <div style="text-align: center; margin: 30px 0;">
+        <a href="{invitation_link}"
+           style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Accept Invitation & Join Group
+        </a>
+    </div>
+
+    <p><small>This invitation will expire in 7 days. If you already have a Bill Split account, you'll be added to the group automatically. If not, you'll be prompted to sign up with Google.</small></p>
+
+    <p>Best regards,<br>Bill Split Team</p>
+    """
+
+    send_email_notification(invitee_email, subject, html_body)
 
 
 def parse_receipt_with_ai(image_file, max_retries=3):
@@ -532,6 +712,16 @@ def auth_google_callback():
                 f"billsplit://success?session_token={session_token}&user_id={user.id}"
             )
         else:
+            # Check for pending invitation
+            pending_invitation_token = session.get("pending_invitation")
+            if pending_invitation_token:
+                session.pop("pending_invitation", None)
+                return redirect(
+                    url_for(
+                        "accept_invitation", invitation_token=pending_invitation_token
+                    )
+                )
+
             # Redirect to web app
             return redirect("/")
 
@@ -546,6 +736,27 @@ def auth_google_callback():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def settings():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        # Update notification preferences
+        user.notify_bill_created = "notify_bill_created" in request.form
+        user.notify_bill_edited = "notify_bill_edited" in request.form
+        user.notify_bill_deleted = "notify_bill_deleted" in request.form
+        user.notify_group_invites = "notify_group_invites" in request.form
+
+        db.session.commit()
+        return render_template(
+            "settings.html", user=user, success="Settings updated successfully!"
+        )
+
+    return render_template("settings.html", user=user)
 
 
 # Group management routes
@@ -619,24 +830,133 @@ def add_member(group_id):
     if not email:
         return jsonify({"error": "Email is required"}), 400
 
+    group = Group.query.get_or_404(group_id)
+
     # Find user by email
-    new_user = User.query.filter_by(email=email).first()
-    if not new_user:
-        return jsonify({"error": "User not found. They need to sign up first."}), 404
+    existing_user = User.query.filter_by(email=email).first()
 
-    # Check if already member
-    existing = GroupMember.query.filter_by(
-        group_id=group_id, user_id=new_user.id
+    if existing_user:
+        # User exists - check if already member
+        existing_member = GroupMember.query.filter_by(
+            group_id=group_id, user_id=existing_user.id
+        ).first()
+        if existing_member:
+            return jsonify({"error": "User is already a member"}), 400
+
+        # Add existing user to group
+        member = GroupMember(group_id=group_id, user_id=existing_user.id)
+        db.session.add(member)
+        db.session.commit()
+
+        # Send notification if user wants them
+        if existing_user.notify_group_invites:
+            try:
+                subject = f"You've been added to '{group.name}' on Bill Split"
+                html_body = f"""
+                <h2>Added to Group</h2>
+                <p>Hi {existing_user.name},</p>
+                <p><strong>{user.name}</strong> has added you to the group <strong>"{group.name}"</strong> on Bill Split.</p>
+                {f'<p><em>{group.description}</em></p>' if group.description else ''}
+                <p>You can now view and participate in bills for this group by logging into Bill Split.</p>
+                <p><small>You can disable these notifications in your <a href="/settings">account settings</a>.</small></p>
+                <p>Best regards,<br>Bill Split Team</p>
+                """
+                send_email_notification(existing_user.email, subject, html_body)
+            except Exception as e:
+                print(f"Failed to send notification: {str(e)}")
+
+        return jsonify(
+            {"success": True, "message": f"{existing_user.name} added to group"}
+        )
+
+    else:
+        # User doesn't exist - create pending invitation
+        from datetime import timedelta
+
+        # Check if invitation already exists
+        existing_invitation = PendingInvitation.query.filter_by(
+            group_id=group_id, email=email
+        ).first()
+
+        if existing_invitation:
+            return jsonify({"error": "Invitation already sent to this email"}), 400
+
+        # Create invitation token
+        invitation_token = str(uuid.uuid4())
+        expires_at = datetime.utcnow() + timedelta(days=7)
+
+        # Create pending invitation
+        invitation = PendingInvitation(
+            group_id=group_id,
+            email=email,
+            invited_by=user.id,
+            invitation_token=invitation_token,
+            expires_at=expires_at,
+        )
+        db.session.add(invitation)
+        db.session.commit()
+
+        # Send invitation email
+        try:
+            notify_group_invitation(group, user, email, invitation_token)
+        except Exception as e:
+            print(f"Failed to send invitation email: {str(e)}")
+
+        return jsonify({"success": True, "message": f"Invitation sent to {email}"})
+
+
+@app.route("/accept-invitation/<invitation_token>")
+def accept_invitation(invitation_token):
+    # Find the invitation
+    invitation = PendingInvitation.query.filter_by(
+        invitation_token=invitation_token
     ).first()
-    if existing:
-        return jsonify({"error": "User is already a member"}), 400
 
-    # Add member
-    member = GroupMember(group_id=group_id, user_id=new_user.id)
+    if not invitation:
+        return render_template("error.html", error="Invalid invitation link")
+
+    # Check if invitation has expired
+    if datetime.utcnow() > invitation.expires_at:
+        db.session.delete(invitation)
+        db.session.commit()
+        return render_template("error.html", error="This invitation has expired")
+
+    # Check if user is logged in
+    user = get_current_user()
+
+    if not user:
+        # Store invitation token in session and redirect to login
+        session["pending_invitation"] = invitation_token
+        return redirect(url_for("login"))
+
+    # Check if user's email matches the invitation
+    if user.email != invitation.email:
+        return render_template(
+            "error.html",
+            error=f"This invitation was sent to {invitation.email}, but you're logged in as {user.email}. Please log in with the correct account.",
+        )
+
+    # Check if user is already a member
+    existing_member = GroupMember.query.filter_by(
+        group_id=invitation.group_id, user_id=user.id
+    ).first()
+
+    if existing_member:
+        # Clean up invitation and redirect to group
+        db.session.delete(invitation)
+        db.session.commit()
+        return redirect(url_for("view_group", group_id=invitation.group_id))
+
+    # Add user to group
+    member = GroupMember(group_id=invitation.group_id, user_id=user.id)
     db.session.add(member)
+
+    # Clean up invitation
+    db.session.delete(invitation)
     db.session.commit()
 
-    return jsonify({"success": True, "message": f"{new_user.name} added to group"})
+    # Redirect to group with success message
+    return redirect(url_for("view_group", group_id=invitation.group_id))
 
 
 # Bill management routes
@@ -818,6 +1138,14 @@ def create_bill(group_id):
         update_debt_tracking(group_id, bill, splits)
 
         db.session.commit()
+
+        # Send email notifications to participants
+        try:
+            participants = [User.query.get(pid) for pid in participant_ids]
+            notify_bill_created(bill, participants)
+        except Exception as e:
+            print(f"Failed to send email notifications: {str(e)}")
+
         return redirect(url_for("view_bill", bill_id=bill.id))
 
     return render_template("create_bill.html", group=group, members=members)
@@ -969,6 +1297,14 @@ def edit_bill(group_id, bill_id):
         update_debt_tracking(group_id, bill, splits)
 
         db.session.commit()
+
+        # Send email notifications to participants
+        try:
+            participants = [User.query.get(pid) for pid in participant_ids]
+            notify_bill_edited(bill, participants)
+        except Exception as e:
+            print(f"Failed to send email notifications: {str(e)}")
+
         return redirect(url_for("view_group", group_id=group_id))
 
     # GET request - show edit form
@@ -980,6 +1316,73 @@ def edit_bill(group_id, bill_id):
         members=members,
         current_participants=current_participants,
     )
+
+
+@app.route("/groups/<group_id>/bills/<bill_id>/delete", methods=["POST"])
+def delete_bill(group_id, bill_id):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("login"))
+
+    # Check if user is member of group
+    membership = GroupMember.query.filter_by(group_id=group_id, user_id=user.id).first()
+    if not membership:
+        return render_template("error.html", error="You are not a member of this group")
+
+    group = Group.query.get_or_404(group_id)
+    bill = Bill.query.filter_by(id=bill_id, group_id=group_id).first_or_404()
+
+    try:
+        # Get current participants before deletion for debt tracking cleanup and notifications
+        current_participants = {p.user_id: p.amount_owed for p in bill.participants}
+
+        # Prepare notification data before deletion
+        bill_title = bill.title
+        group_name = group.name
+        participants_for_notification = [
+            {"user_id": user_id, "amount_owed": amount_owed}
+            for user_id, amount_owed in current_participants.items()
+        ]
+
+        # Remove debt tracking entries for this bill
+        # We need to reverse the debt tracking that was created for this bill
+        # Use the same logic as update_debt_tracking: bill creator is the creditor
+        bill_creditor = bill.paid_by if bill.paid_by else bill.created_by
+
+        if bill_creditor and current_participants:
+            for participant_id, amount_owed in current_participants.items():
+                if participant_id != bill_creditor and amount_owed > 0:
+                    # Find and remove/update the debt entry
+                    debt = UserDebt.query.filter_by(
+                        group_id=group_id,
+                        debtor_id=participant_id,
+                        creditor_id=bill_creditor,
+                    ).first()
+
+                    if debt:
+                        debt.amount -= amount_owed
+                        if debt.amount <= 0.01:  # Remove if essentially zero
+                            db.session.delete(debt)
+
+        # Delete related records first (foreign key constraints)
+        BillParticipant.query.filter_by(bill_id=bill.id).delete()
+        BillItem.query.filter_by(bill_id=bill.id).delete()
+
+        # Delete the bill itself
+        db.session.delete(bill)
+        db.session.commit()
+
+        # Send email notifications to participants
+        try:
+            notify_bill_deleted(bill_title, group_name, participants_for_notification)
+        except Exception as e:
+            print(f"Failed to send email notifications: {str(e)}")
+
+        return redirect(url_for("view_group", group_id=group_id))
+
+    except Exception as e:
+        db.session.rollback()
+        return render_template("error.html", error=f"Failed to delete bill: {str(e)}")
 
 
 @app.route("/bills/<bill_id>")

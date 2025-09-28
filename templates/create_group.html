@@ -3,24 +3,42 @@
 {% block title %}Create Group - Bill Split{% endblock %}
 
 {% block content %}
-<h2>Create New Group</h2>
+<div class="form-page">
+    <div class="form-container">
+        <h1 class="form-title md-headline-medium">
+            <span class="material-icons md-24">group_add</span>
+            Create New Group
+        </h1>
 
-{% if error %}
-<div class="error">{{ error }}</div>
-{% endif %}
+        {% if error %}
+        <div class="md-alert md-alert--error">
+            <span class="material-icons md-18">error</span>
+            {{ error }}
+        </div>
+        {% endif %}
 
-<form method="POST">
-    <div class="form-group">
-        <label for="name">Group Name *</label>
-        <input type="text" id="name" name="name" required>
+        <form method="POST">
+            <div class="md-form-field">
+                <label for="name" class="md-form-field__label md-form-field__label--required">Group Name</label>
+                <input type="text" id="name" name="name" class="md-text-field" required>
+            </div>
+
+            <div class="md-form-field">
+                <label for="description" class="md-form-field__label">Description</label>
+                <textarea id="description" name="description" rows="3" class="md-text-field"></textarea>
+            </div>
+
+            <div class="form-actions">
+                <a href="/" class="md-button md-button--outlined">
+                    <span class="material-icons md-18">arrow_back</span>
+                    Cancel
+                </a>
+                <button type="submit" class="md-button md-button--filled">
+                    <span class="material-icons md-18">add</span>
+                    Create Group
+                </button>
+            </div>
+        </form>
     </div>
-    
-    <div class="form-group">
-        <label for="description">Description</label>
-        <textarea id="description" name="description" rows="3"></textarea>
-    </div>
-    
-    <button type="submit" class="btn">Create Group</button>
-    <a href="/" class="btn btn-secondary">Cancel</a>
-</form>
+</div>
 {% endblock %}

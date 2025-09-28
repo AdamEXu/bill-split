@@ -1,53 +1,47 @@
-{% extends "base.html" %} {% block title %}Edit Bill - {{ bill.title }} - Bill
-Split{% endblock %} {% block content %}
-<h2>Edit Bill: {{ bill.title }}</h2>
+{% extends "base.html" %}
 
-{% if error %}
-<div class="error">{{ error }}</div>
-{% endif %}
+{% block title %}Edit Bill - {{ bill.title }} - Bill Split{% endblock %}
 
-<form method="POST">
-    <div class="form-group">
-        <label for="title">Bill Title *</label>
-        <input type="text" id="title" name="title" value="{{ bill.title }}" required />
-    </div>
+{% block content %}
+<div class="form-page">
+    <div class="form-container" style="max-width: 800px;">
+        <h1 class="form-title md-headline-medium">
+            <span class="material-icons md-24">edit</span>
+            Edit Bill: {{ bill.title }}
+        </h1>
 
-    <div class="form-group">
-        <label for="description">Description</label>
-        <textarea id="description" name="description" rows="3">{{ bill.description or '' }}</textarea>
-    </div>
+        {% if error %}
+        <div class="md-alert md-alert--error">
+            <span class="material-icons md-18">error</span>
+            {{ error }}
+        </div>
+        {% endif %}
 
-    <div class="form-group">
-        <label for="subtotal">Subtotal *</label>
-        <input
-            type="number"
-            id="subtotal"
-            name="subtotal"
-            step="0.01"
-            min="0"
-            value="{{ '%.2f'|format(bill.subtotal) }}"
-            required
-        />
-    </div>
+        <form method="POST">
+            <div class="md-form-field">
+                <label for="title" class="md-form-field__label md-form-field__label--required">Bill Title</label>
+                <input type="text" id="title" name="title" value="{{ bill.title }}" class="md-text-field" required />
+            </div>
 
-    <div class="form-group">
-        <label for="tax_amount">Tax Amount</label>
-        <input
-            type="number"
-            id="tax_amount"
-            name="tax_amount"
-            step="0.01"
-            min="0"
-            value="{{ '%.2f'|format(bill.tax_amount) }}"
-        />
-    </div>
+            <div class="md-form-field">
+                <label for="description" class="md-form-field__label">Description</label>
+                <textarea id="description" name="description" rows="3" class="md-text-field">{{ bill.description or '' }}</textarea>
+            </div>
 
-    <div class="form-group">
-        <label for="tip_amount">Tip Amount</label>
-        <input
-            type="number"
-            id="tip_amount"
-            name="tip_amount"
+            <div class="md-grid md-grid--3-col">
+                <div class="md-form-field">
+                    <label for="subtotal" class="md-form-field__label md-form-field__label--required">Subtotal</label>
+                    <input type="number" id="subtotal" name="subtotal" step="0.01" min="0" value="{{ '%.2f'|format(bill.subtotal) }}" class="md-text-field" required />
+                </div>
+
+                <div class="md-form-field">
+                    <label for="tax_amount" class="md-form-field__label">Tax Amount</label>
+                    <input type="number" id="tax_amount" name="tax_amount" step="0.01" min="0" value="{{ '%.2f'|format(bill.tax_amount) }}" class="md-text-field" />
+                </div>
+
+                <div class="md-form-field">
+                    <label for="tip_amount" class="md-form-field__label">Tip Amount</label>
+                    <input type="number" id="tip_amount" name="tip_amount"
             step="0.01"
             min="0"
             value="{{ '%.2f'|format(bill.tip_amount) }}"
